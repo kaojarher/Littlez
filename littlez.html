@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>小智风格 · 跨平台 AI 聊天</title>
+  <script src="https://js.puter.com/v2/"></script>
+  <script type="importmap">
+  {"imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"}}
+  </script>
+  <style>
+    :root {
+      --fs: 1.2;
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-2: #eef1f8;
+      --surface-3: #f8fafd;
+      --border: #dce1eb;
+      --text: #1a1d26;
+      --text-2: #5f6b7a;
+      --accent: #4f6ef7;
+      --accent-2: #e8ecff;
+      --danger: #e5484d;
+      --success: #0f9d58;
+      --warn-bg: #fff8e6;
+      --warn-border: #f5c542;
+      --shadow: 0 4px 20px rgba(0,0,0,0.06);
+      --radius: 16px;
+      --sidebar-w: 320px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    }
+    html { font-size: calc(16px * var(--fs)); }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      overflow: hidden;
+      font-size: 1rem;
+    }
+
+    /* ---------- 侧边栏 ---------- */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      transition: transform 0.25s ease;
+      z-index: 30;
+    }
+    .sidebar-header {
+      padding: 1.1rem 1rem 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      gap: 0.5rem;
+    }
+    .sidebar-header h1 { font-size: 1.15rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+    .sidebar-header .sub { font-size: 0.8rem; color: var(--text-2); margin-top: 2px; }
+    .role-list { flex: 1; overflow-y: auto; padding: 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+    .role-item {
+      padding: 0.75rem 0.85rem;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+    }
+    .role-item:hover { background: var(--surface-2); }
+    .role-item.active { background: var(--accent-2); border-color: var(--accent); }
+    .role-avatar {
+      width: 2.6rem; height: 2.6rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 1rem;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .role-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .role-info { flex: 1; min-width: 0; }
+    .role-info .name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .role-info .desc { font-size: 0.82rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .sidebar-footer { padding: 0.8rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; }
+
+    /* ---------- 主区域 ---------- */
+    .main { flex: 1; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; position: relative; }
+    .topbar {
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-shrink: 0;
+      min-height: 3.6rem;
+    }
+    .topbar .role-title { font-weight: 700; font-size: 1.05rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .provider-badge {
+      font-size: 0.82rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      background: var(--accent-2);
+      color: var(--accent);
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1.5px solid var(--accent);
+      max-width: 34vw;
+      overflow: hidden; text-overflow: ellipsis;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: background 0.15s, transform 0.1s;
+      line-height: 1.2;
+    }
+    .provider-badge:hover { background: #dbe3ff; }
+    .provider-badge:active { transform: scale(0.96); }
+    .provider-badge::before { content: "⚙"; font-size: 0.9em; }
+    .menu-btn { display: none; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text); padding: 0.2rem 0.5rem; border-radius: 8px; line-height: 1; }
+    .menu-btn:hover { background: var(--surface-2); }
+
+    /* ---------- 聊天消息 ---------- */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.2rem 1rem 0.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      scroll-behavior: smooth;
+    }
+    .msg {
+      max-width: 84%;
+      padding: 0.8rem 1.1rem;
+      border-radius: 18px;
+      line-height: 1.65;
+      font-size: 1rem;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      animation: fadeUp 0.2s ease;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 6px; }
+    .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 6px; box-shadow: var(--shadow); }
+    .msg.system-msg {
+      align-self: center;
+      background: var(--surface-2);
+      color: var(--text-2);
+      font-size: 0.85rem;
+      padding: 0.45rem 1rem;
+      border-radius: 20px;
+      max-width: 92%;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .msg.assistant.streaming::after { content: "▍"; animation: blink 0.8s infinite; color: var(--accent); }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ---------- 输入区 ---------- */
+    .composer { padding: 0.6rem 1rem 1rem; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+    .composer-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+      background: var(--surface-2);
+      border-radius: 24px;
+      padding: 0.4rem 0.4rem 0.4rem 1rem;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+    .composer-row:focus-within { border-color: var(--accent); }
+    .composer-row textarea {
+      flex: 1;
+      border: none;
+      background: transparent;
+      resize: none;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.55;
+      padding: 0.5rem 0;
+      max-height: 10rem;
+      outline: none;
+      color: var(--text);
+    }
+    .composer-row textarea::placeholder { color: var(--text-2); opacity: 0.7; }
+    .send-btn {
+      width: 2.9rem; height: 2.9rem;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1.3rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: grid; place-items: center;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .send-btn:active { transform: scale(0.94); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ---------- 按钮通用 ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.55rem 0.9rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--surface-2); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: #3d5ce0; }
+    .btn.danger { color: var(--danger); border-color: transparent; }
+    .btn.danger:hover { background: #fdecec; }
+    .btn.sm { padding: 0.4rem 0.7rem; font-size: 0.82rem; border-radius: 8px; }
+    .btn.block { width: 100%; }
+    .font-btn { min-width: 3.2rem; font-weight: 700; }
+    .btn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ---------- 模态框 ---------- */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(10,12,20,0.45);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 42rem;
+      max-height: 92vh;
+      max-height: 92dvh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      animation: modalIn 0.2s ease;
+    }
+    @keyframes modalIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+    .modal-header {
+      padding: 1rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .modal-header h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+    .modal-body {
+      padding: 1.1rem 1.2rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .modal-footer {
+      padding: 0.8rem 1.2rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.35rem; }
+    .field label { font-size: 0.92rem; font-weight: 600; color: var(--text-2); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+    .field label .val { color: var(--accent); font-weight: 700; font-size: 0.92rem; }
+    .field input, .field select, .field textarea {
+      padding: 0.65rem 0.8rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      font-family: inherit;
+      font-size: 1rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+      width: 100%;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); background: var(--surface); }
+    .field textarea { resize: vertical; min-height: 7rem; line-height: 1.55; }
+    .field .hint { font-size: 0.8rem; color: var(--text-2); line-height: 1.45; }
+    .field input[type="range"] { padding: 0; height: 1.8rem; background: transparent; border: none; accent-color: var(--accent); }
+    .field input[type="color"] { height: 2.6rem; padding: 0.2rem; }
+    .row { display: flex; gap: 0.7rem; }
+    .row > * { flex: 1; min-width: 0; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0; gap: 1rem; }
+    .toggle-row label.tg-label { font-size: 0.95rem; font-weight: 600; }
+    .toggle { position: relative; width: 2.9rem; height: 1.65rem; flex-shrink: 0; display: inline-block; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; inset: 0; background: var(--border); border-radius: 24px; cursor: pointer; transition: background 0.2s; }
+    .toggle .slider::before {
+      content: "";
+      position: absolute;
+      width: 1.25rem; height: 1.25rem;
+      left: 0.2rem; bottom: 0.2rem;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::before { transform: translateX(1.25rem); }
+
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.03em;
+      margin-top: 0.3rem;
+      padding: 0.4rem 0 0.4rem 0.6rem;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-2);
+      border-radius: 4px;
+    }
+    .test-status {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      padding: 0.6rem 0.8rem;
+      border-radius: 10px;
+      background: var(--surface-2);
+      display: none;
+      word-break: break-word;
+    }
+    .test-status.show { display: block; }
+
+    /* 顶部状态提示条 */
+    .status-bar {
+      padding: 0.7rem 0.9rem;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+    .status-bar.ok {
+      background: #e6f4ea;
+      border-color: #b7e1c2;
+      color: var(--success);
+    }
+    .status-bar.warn {
+      background: var(--warn-bg);
+      border-color: var(--warn-border);
+      color: #8a6100;
+    }
+    .status-bar strong { font-weight: 700; }
+
+    /* 字段可见性提示标签 */
+    .field-tag {
+      font-size: 0.7rem;
+      padding: 0.12rem 0.45rem;
+      border-radius: 6px;
+      background: #fdecec;
+      color: var(--danger);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .field-tag.ok { background: #e6f4ea; color: var(--success); }
+
+    /* ---------- 衣橱 ---------- */
+    #vrmStage {
+      height: 300px;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(170deg, var(--surface-2), var(--surface-3));
+      border: 1px solid var(--border);
+      cursor: grab;
+      touch-action: pan-y;
+      flex-shrink: 0;
+    }
+    #vrmStage:active { cursor: grabbing; }
+    #vrmStage canvas { width: 100%; height: 100%; display: block; }
+    .cp-presets {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+      gap: 10px;
+    }
+    .cp-swatch {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      padding: 0;
+      transition: transform 0.12s, box-shadow 0.12s;
+      background-color: transparent;
+    }
+    .cp-swatch:hover { transform: scale(1.08); }
+    .cp-swatch:active { transform: scale(0.96); }
+    .cp-swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-2); }
+    .cp-swatch.original {
+      background: repeating-linear-gradient(45deg, #d9e1dd, #d9e1dd 4px, #f4f8f6 4px, #f4f8f6 8px);
+    }
+
+    /* ---------- 响应式 ---------- */
+    @media (max-width: 820px) {
+      .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); box-shadow: 4px 0 30px rgba(0,0,0,0.15); }
+      .sidebar.open { transform: translateX(0); }
+      .menu-btn { display: block; }
+      .msg { max-width: 90%; }
+      .modal { max-width: 100%; max-height: 94vh; }
+      .provider-badge { max-width: 30vw; font-size: 0.78rem; }
+      .row { flex-direction: column; }
+      #vrmStage { height: 240px; }
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div>
+        <h1>小智 · 智能体</h1>
+        <div class="sub">角色管理 / Persona</div>
+      </div>
+      <button class="btn sm" id="addRoleBtn" title="新增角色">＋ 新增</button>
+    </div>
+    <div class="role-list" id="roleList"></div>
+    <div class="sidebar-footer">
+      <button class="btn block sm" id="providerBtn">⚙ 模型与 API 设置</button>
+    </div>
+  </aside>
+
+  <!-- 主聊天区 -->
+  <main class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="role-title" id="currentRoleTitle">小智</div>
+      <button class="provider-badge" id="providerBadge" title="点击打开模型与 API 设置">Puter AI</button>
+      <button class="btn sm" id="wardrobeBtn" title="小智的衣橱">🎨</button>
+      <button class="btn sm font-btn" id="fontBtn" title="调整字体大小">A</button>
+      <button class="btn sm" id="editCurrentRoleBtn" title="编辑当前角色">✎</button>
+    </div>
+
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="composer">
+      <div class="composer-row">
+        <textarea id="input" rows="1" placeholder="输入消息… (Enter 发送，Shift+Enter 换行)"></textarea>
+        <button class="send-btn" id="sendBtn" aria-label="发送">↑</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== 角色编辑模态框 ========== -->
+  <div class="modal-overlay" id="roleModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="roleModalTitle">编辑角色</h2>
+        <button class="btn sm" id="closeRoleModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>角色名称</label>
+          <input type="text" id="roleName" placeholder="例如：小智、金融助理、台湾女友…" maxlength="30">
+        </div>
+        <div class="field">
+          <label>角色人设 / 提示词</label>
+          <textarea id="rolePrompt" placeholder="描述角色的性格、身份、说话风格…&#10;例如：你是小智，一个温暖、好奇、略带幽默感的 AI 伙伴。"></textarea>
+          <div class="hint">系统会将此内容作为 System Prompt 发送，塑造角色的“灵魂”。</div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>头像表情 / 文字</label>
+            <input type="text" id="roleAvatar" placeholder="例如：🤖 / 智" maxlength="4">
+          </div>
+          <div class="field">
+            <label>角色标识色</label>
+            <input type="color" id="roleColor" value="#4f6ef7">
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <label class="tg-label">启用短期记忆</label>
+            <div class="hint" style="margin-top:2px;">自动携带最近对话上下文，模拟小智的“记忆”能力。</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="roleMemory" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <label>专属模型覆盖（可选）</label>
+          <select id="roleModelOverride">
+            <option value="">跟随全局模型设置</option>
+            <option value="openai/gpt-4o-mini">Puter · GPT-4o Mini</option>
+            <option value="openai/gpt-4o">Puter · GPT-4o</option>
+            <option value="anthropic/claude-3-5-sonnet">Puter · Claude 3.5 Sonnet</option>
+            <option value="deepseek/deepseek-chat">Puter · DeepSeek</option>
+            <option value="google/gemini-2.0-flash">Puter · Gemini 2.0 Flash</option>
+            <option value="llama3.2">Ollama · llama3.2</option>
+            <option value="qwen2.5">Ollama · qwen2.5</option>
+          </select>
+          <div class="hint">仅对 Puter / Ollama 生效；OpenAI 兼容端点请使用全局模型。</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn danger" id="deleteRoleBtn" style="margin-right:auto;">删除角色</button>
+        <button class="btn" id="cancelRoleBtn">取消</button>
+        <button class="btn primary" id="saveRoleBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 模型与 API 设置模态框 ========== -->
+  <div class="modal-overlay" id="providerModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>模型与 API 设置</h2>
+        <button class="btn sm" id="closeProviderModal">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="status-bar" id="statusBar"></div>
+
+        <div class="section-title">1. LLM 提供者</div>
+        <div class="field">
+          <label>选择提供者</label>
+          <select id="providerSelect">
+            <option value="puter">Puter AI（默认 · 免费 · 无需密钥）</option>
+            <option value="openai">OpenAI（或兼容 API）</option>
+            <option value="ollama">Ollama（本地）</option>
+            <option value="custom">自定义本地 / 远程兼容端点</option>
+          </select>
+        </div>
+
+        <div class="section-title">2. 连接参数（URL / API Key / 模型）</div>
+
+        <div class="field">
+          <label>
+            <span id="baseUrlLabel">API Base URL</span>
+            <span class="field-tag" id="baseUrlTag"></span>
+          </label>
+          <input type="text" id="apiBaseUrl" placeholder="https://api.openai.com/v1" autocomplete="off">
+          <div class="hint" id="baseUrlHint"></div>
+        </div>
+
+        <div class="field">
+          <label>
+            <span id="apiKeyLabel">API Key</span>
+            <span class="field-tag" id="apiKeyTag"></span>
+          </label>
+          <input type="password" id="apiKey" placeholder="sk-…" autocomplete="off">
+          <div class="hint" id="apiKeyHint"></div>
+        </div>
+
+        <div class="field">
+          <label>
+            <span id="modelLabel">模型名称</span>
+          </label>
+          <input type="text" id="modelInput" placeholder="gpt-4o-mini" autocomplete="off">
+          <select id="puterModelSelect" style="display:none;">
+            <option value="openai/gpt-4o-mini">GPT-4o Mini（快速）</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+            <option value="anthropic/claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+            <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
+            <option value="google/gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B</option>
+          </select>
+          <div class="hint" id="modelHint"></div>
+        </div>
+
+        <div class="section-title">3. 生成参数</div>
+        <div class="field">
+          <label>温度 (Temperature) <span class="val" id="tempVal">0.7</span></label>
+          <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+          <div class="hint">越低越确定、越严谨；越高越有创意。推荐 0.6–0.9。部分模型可能忽略此参数。</div>
+        </div>
+        <div class="field">
+          <label>Top P <span class="val" id="topPVal">1.0</span></label>
+          <input type="range" id="topP" min="0.1" max="1" step="0.05" value="1">
+          <div class="hint">核采样阈值，通常保持 1.0 即可。</div>
+        </div>
+        <div class="field">
+          <label>最大回复长度 (max_tokens)</label>
+          <input type="number" id="maxTokens" min="16" max="32768" step="16" value="2048">
+          <div class="hint">限制单次回复的 token 数。太小可能截断长回复。</div>
+        </div>
+
+        <div class="section-title">4. 全局附加提示词（可选）</div>
+        <div class="field">
+          <textarea id="systemExtra" placeholder="此处内容会附加在每个角色的系统提示词之后。&#10;例如：请始终使用繁体中文回答，并在结尾加一个 emoji。"></textarea>
+          <div class="hint">适合设置跨角色的通用规则（语言、格式、禁忌等）。</div>
+        </div>
+
+        <div class="section-title">5. 响应与连接</div>
+        <div class="toggle-row">
+          <div>
+            <label class="tg-label">流式响应</label>
+            <div class="hint" style="margin-top:2px;">逐字显示回复，体验更自然。</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="streamEnabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <button class="btn block" id="testBtn" type="button">🔌 测试连接</button>
+          <div class="test-status" id="testStatus"></div>
+          <div class="hint">使用当前表单中的设置发送一条测试消息，不会保存对话。</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="closeProviderBtn">关闭</button>
+        <button class="btn primary" id="saveProviderBtn">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 小智的衣橱 ========== -->
+  <div class="modal-overlay" id="wardrobeModal">
+    <div class="modal" style="max-width:26rem;">
+      <div class="modal-header">
+        <h2>🎨 小智的衣橱</h2>
+        <button class="btn sm" id="closeWardrobe">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="vrmStage"></div>
+        <div class="cp-presets" id="cpPresets"></div>
+        <div class="row">
+          <div class="field">
+            <label>自定义颜色</label>
+            <input type="color" id="cpCustom" value="#6bb8e0">
+          </div>
+          <div class="field">
+            <label>随机穿搭</label>
+            <button class="btn block" id="cpRandom">🎲 换一套</button>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" data-target="cloth" aria-pressed="true">衣服材质</button>
+          <button class="btn" data-target="all" aria-pressed="false">全部材质</button>
+        </div>
+        <div class="hint" id="cpInfo">正在加载小智…</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="cpReset" style="margin-right:auto;">恢复原色</button>
+        <button class="btn primary" id="closeWardrobe2">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      "use strict";
+
+      const STORAGE_KEY = "xiaozhi_style_chat_v3";
+
+      const DEFAULT_ROLES = [
+        {
+          id: "xiaozhi",
+          name: "小智",
+          prompt: "你是小智，一个温暖、好奇、略带幽默感的 AI 伙伴。你说话简洁自然，喜欢用比喻，避免说教。你总是以朋友的身份陪伴用户，倾听他们的想法，给出真诚、有见地的回应。",
+          avatar: "🤖",
+          color: "#4f6ef7",
+          memory: true,
+          modelOverride: ""
+        },
+        {
+          id: "finance",
+          name: "金融助理",
+          prompt: "你是一位专业、冷静的个人金融助理。你擅长用通俗的语言解释复杂的金融概念，帮助用户理解投资、储蓄和风险管理。你不提供具体的买卖建议，但会引导用户做出理性的财务决策。语气专业但不冰冷。",
+          avatar: "📊",
+          color: "#0f9d58",
+          memory: true,
+          modelOverride: ""
+        },
+        {
+          id: "taiwan-girl",
+          name: "台湾女友",
+          prompt: "你是一个说话带点台湾腔的可爱女生，性格直率、有点小任性但很贴心。你称呼用户为“宝贝”。你说话轻松自然，喜欢用“啦”“喔”“捏”等语气词，偶尔会撒娇。你关心用户的日常生活，会主动问对方今天过得怎么样。",
+          avatar: "🌸",
+          color: "#e5484d",
+          memory: true,
+          modelOverride: ""
+        }
+      ];
+
+      const DEFAULT_SETTINGS = {
+        provider: "puter",
+        puterModel: "openai/gpt-4o-mini",
+        openaiBase: "https://api.openai.com/v1",
+        openaiKey: "",
+        openaiModel: "gpt-4o-mini",
+        ollamaBase: "http://localhost:11434/v1",
+        ollamaModel: "llama3.2",
+        customBase: "http://127.0.0.1:8080/v1",
+        customKey: "",
+        customModel: "local-model",
+        temperature: 0.7,
+        topP: 1.0,
+        maxTokens: 2048,
+        systemExtra: "",
+        stream: true,
+        fontSize: 1.2
+      };
+
+      const FONT_STEPS = [
+        { v: 1.0, label: "標準" },
+        { v: 1.2, label: "大" },
+        { v: 1.4, label: "特大" },
+        { v: 1.6, label: "超大" }
+      ];
+
+      let state = {
+        roles: [],
+        activeRoleId: null,
+        settings: { ...DEFAULT_SETTINGS },
+        chats: {},
+        editingRoleId: null
+      };
+
+      const $ = (sel) => document.querySelector(sel);
+
+      const sidebar = $("#sidebar");
+      const roleList = $("#roleList");
+      const addRoleBtn = $("#addRoleBtn");
+      const providerBtn = $("#providerBtn");
+
+      const chatArea = $("#chatArea");
+      const input = $("#input");
+      const sendBtn = $("#sendBtn");
+      const currentRoleTitle = $("#currentRoleTitle");
+      const providerBadge = $("#providerBadge");
+      const menuBtn = $("#menuBtn");
+      const fontBtn = $("#fontBtn");
+      const editCurrentRoleBtn = $("#editCurrentRoleBtn");
+
+      const roleModal = $("#roleModal");
+      const roleModalTitle = $("#roleModalTitle");
+      const roleName = $("#roleName");
+      const rolePrompt = $("#rolePrompt");
+      const roleAvatar = $("#roleAvatar");
+      const roleColor = $("#roleColor");
+      const roleMemory = $("#roleMemory");
+      const roleModelOverride = $("#roleModelOverride");
+      const closeRoleModal = $("#closeRoleModal");
+      const cancelRoleBtn = $("#cancelRoleBtn");
+      const saveRoleBtn = $("#saveRoleBtn");
+      const deleteRoleBtn = $("#deleteRoleBtn");
+
+      const providerModal = $("#providerModal");
+      const statusBar = $("#statusBar");
+      const providerSelect = $("#providerSelect");
+      const apiBaseUrl = $("#apiBaseUrl");
+      const apiKey = $("#apiKey");
+      const modelInput = $("#modelInput");
+      const puterModelSelect = $("#puterModelSelect");
+      const baseUrlLabel = $("#baseUrlLabel");
+      const apiKeyLabel = $("#apiKeyLabel");
+      const modelLabel = $("#modelLabel");
+      const baseUrlTag = $("#baseUrlTag");
+      const apiKeyTag = $("#apiKeyTag");
+      const baseUrlHint = $("#baseUrlHint");
+      const apiKeyHint = $("#apiKeyHint");
+      const modelHint = $("#modelHint");
+      const temperature = $("#temperature");
+      const tempVal = $("#tempVal");
+      const topP = $("#topP");
+      const topPVal = $("#topPVal");
+      const maxTokens = $("#maxTokens");
+      const systemExtra = $("#systemExtra");
+      const streamEnabled = $("#streamEnabled");
+      const testBtn = $("#testBtn");
+      const testStatus = $("#testStatus");
+      const closeProviderModal = $("#closeProviderModal");
+      const closeProviderBtn = $("#closeProviderBtn");
+      const saveProviderBtn = $("#saveProviderBtn");
+
+      // ==================== 持久化 ====================
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const saved = JSON.parse(raw);
+            state.roles = (saved.roles && saved.roles.length) ? saved.roles : [...DEFAULT_ROLES];
+            state.settings = { ...DEFAULT_SETTINGS, ...(saved.settings || {}) };
+            state.chats = saved.chats || {};
+            state.activeRoleId = saved.activeRoleId || state.roles[0]?.id || null;
+          } else {
+            state.roles = [...DEFAULT_ROLES];
+            state.activeRoleId = state.roles[0].id;
+          }
+        } catch (e) {
+          state.roles = [...DEFAULT_ROLES];
+          state.activeRoleId = state.roles[0].id;
+        }
+        if (!state.roles.find(r => r.id === state.activeRoleId)) {
+          state.activeRoleId = state.roles[0]?.id || null;
+        }
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            roles: state.roles,
+            activeRoleId: state.activeRoleId,
+            settings: state.settings,
+            chats: state.chats
+          }));
+        } catch (e) {}
+      }
+
+      // ==================== 工具 ====================
+      function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+      function escapeHtml(str) { const d = document.createElement("div"); d.textContent = str; return d.innerHTML; }
+      function getActiveRole() { return state.roles.find(r => r.id === state.activeRoleId) || state.roles[0]; }
+      function getChat(roleId) { if (!state.chats[roleId]) state.chats[roleId] = []; return state.chats[roleId]; }
+
+      function getProviderLabel() {
+        const p = state.settings.provider;
+        if (p === "puter") return "Puter AI";
+        if (p === "openai") return "OpenAI";
+        if (p === "ollama") return "Ollama";
+        return "自定义 LLM";
+      }
+
+      // ==================== 字号 ====================
+      function applyFontScale(v) {
+        document.documentElement.style.setProperty("--fs", v);
+        const step = FONT_STEPS.find(s => Math.abs(s.v - v) < 0.01) || FONT_STEPS[1];
+        fontBtn.textContent = "A·" + step.label;
+      }
+      function cycleFontSize() {
+        const cur = state.settings.fontSize || 1.2;
+        let idx = FONT_STEPS.findIndex(s => Math.abs(s.v - cur) < 0.01);
+        idx = (idx + 1) % FONT_STEPS.length;
+        const next = FONT_STEPS[idx].v;
+        state.settings.fontSize = next;
+        applyFontScale(next);
+        saveState();
+        autoResizeInput();
+      }
+
+      // ==================== 角色列表 ====================
+      function renderRoles() {
+        roleList.innerHTML = "";
+        state.roles.forEach(role => {
+          const el = document.createElement("div");
+          el.className = "role-item" + (role.id === state.activeRoleId ? " active" : "");
+          const avatarContent = /^[a-zA-Z0-9\u4e00-\u9fa5]{1,2}$/.test(role.avatar || "")
+            ? escapeHtml(role.avatar) : (role.avatar || "🤖");
+          el.innerHTML = `
+            <div class="role-avatar" style="background:${role.color || "#4f6ef7"}">${avatarContent}</div>
+            <div class="role-info">
+              <div class="name">${escapeHtml(role.name)}</div>
+              <div class="desc">${escapeHtml((role.prompt || "").slice(0, 40))}</div>
+            </div>
+          `;
+          el.addEventListener("click", () => {
+            state.activeRoleId = role.id;
+            saveState();
+            renderRoles();
+            renderChat();
+            updateTopbar();
+            if (window.innerWidth <= 820) sidebar.classList.remove("open");
+          });
+          roleList.appendChild(el);
+        });
+      }
+
+      // ==================== 聊天渲染 ====================
+      function renderChat() {
+        const role = getActiveRole();
+        if (!role) return;
+        const messages = getChat(role.id);
+        chatArea.innerHTML = "";
+
+        if (messages.length === 0) {
+          chatArea.innerHTML = `
+            <div class="msg system-msg">
+              ${escapeHtml(role.name)} 已就绪 · ${getProviderLabel()}<br>
+              <span style="font-size:0.85em;">${escapeHtml((role.prompt || "").slice(0, 90))}…</span>
+            </div>
+          `;
+          return;
+        }
+
+        messages.forEach(m => {
+          const div = document.createElement("div");
+          div.className = "msg " + m.role;
+          div.textContent = m.content;
+          chatArea.appendChild(div);
+        });
+        scrollToBottom();
+      }
+
+      function scrollToBottom() { chatArea.scrollTop = chatArea.scrollHeight; }
+
+      function updateTopbar() {
+        const role = getActiveRole();
+        if (!role) return;
+        currentRoleTitle.textContent = role.name || "未命名角色";
+        providerBadge.textContent = getProviderLabel();
+        const s = state.settings;
+        providerBadge.title = "点击打开模型与 API 设置\n当前模型：" +
+          (s.provider === "puter" ? s.puterModel :
+           s.provider === "openai" ? s.openaiModel :
+           s.provider === "ollama" ? s.ollamaModel : s.customModel);
+      }
+
+      // ==================== 角色模态框 ====================
+      function openRoleModal(roleId) {
+        state.editingRoleId = roleId || null;
+        if (roleId) {
+          const role = state.roles.find(r => r.id === roleId);
+          if (!role) return;
+          roleModalTitle.textContent = "编辑角色";
+          roleName.value = role.name || "";
+          rolePrompt.value = role.prompt || "";
+          roleAvatar.value = role.avatar || "🤖";
+          roleColor.value = role.color || "#4f6ef7";
+          roleMemory.checked = role.memory !== false;
+          roleModelOverride.value = role.modelOverride || "";
+          deleteRoleBtn.style.display = state.roles.length > 1 ? "inline-flex" : "none";
+        } else {
+          roleModalTitle.textContent = "新增角色";
+          roleName.value = "";
+          rolePrompt.value = "";
+          roleAvatar.value = "✨";
+          roleColor.value = "#4f6ef7";
+          roleMemory.checked = true;
+          roleModelOverride.value = "";
+          deleteRoleBtn.style.display = "none";
+        }
+        roleModal.classList.add("show");
+        setTimeout(() => roleName.focus(), 120);
+      }
+
+      function closeRoleModalFn() {
+        roleModal.classList.remove("show");
+        state.editingRoleId = null;
+      }
+
+      function saveRole() {
+        const name = roleName.value.trim();
+        if (!name) {
+          roleName.focus();
+          roleName.style.borderColor = "var(--danger)";
+          setTimeout(() => { roleName.style.borderColor = ""; }, 1500);
+          return;
+        }
+        const data = {
+          name,
+          prompt: rolePrompt.value.trim(),
+          avatar: roleAvatar.value.trim() || "🤖",
+          color: roleColor.value,
+          memory: roleMemory.checked,
+          modelOverride: roleModelOverride.value
+        };
+        if (state.editingRoleId) {
+          const idx = state.roles.findIndex(r => r.id === state.editingRoleId);
+          if (idx !== -1) state.roles[idx] = { ...state.roles[idx], ...data };
+        } else {
+          const newRole = { id: uid(), ...data };
+          state.roles.push(newRole);
+          state.activeRoleId = newRole.id;
+        }
+        saveState();
+        renderRoles();
+        renderChat();
+        updateTopbar();
+        closeRoleModalFn();
+      }
+
+      function deleteRole() {
+        if (!state.editingRoleId || state.roles.length <= 1) return;
+        if (!confirm("确定要删除这个角色吗？对话记录也会一并清除。")) return;
+        const rid = state.editingRoleId;
+        state.roles = state.roles.filter(r => r.id !== rid);
+        delete state.chats[rid];
+        if (state.activeRoleId === rid) state.activeRoleId = state.roles[0]?.id || null;
+        saveState();
+        renderRoles();
+        renderChat();
+        updateTopbar();
+        closeRoleModalFn();
+      }
+
+      // ==================== 设置 UI ====================
+      function updateProviderUI(provider, s) {
+        s = s || state.settings;
+
+        statusBar.className = "status-bar";
+        if (provider === "puter") {
+          statusBar.classList.add("ok");
+          statusBar.innerHTML = `<strong>当前：Puter AI · ${escapeHtml(s.puterModel || "openai/gpt-4o-mini")}</strong><br>Puter 使用内置端点与免密钥服务。下方 URL 与 API Key 可留空，填写也会被忽略。`;
+        } else if (provider === "openai") {
+          statusBar.classList.add("ok");
+          statusBar.innerHTML = `<strong>当前：OpenAI（或兼容 API）· ${escapeHtml(s.openaiModel || "gpt-4o-mini")}</strong><br>请填写 Base URL 与 API Key。`;
+        } else if (provider === "ollama") {
+          statusBar.classList.add("warn");
+          statusBar.innerHTML = `<strong>当前：Ollama · ${escapeHtml(s.ollamaModel || "llama3.2")}</strong><br>请填写 Ollama 地址，API Key 通常留空。若跨域失败，请设置 <code>OLLAMA_ORIGINS=*</code>。`;
+        } else {
+          statusBar.classList.add("warn");
+          statusBar.innerHTML = `<strong>当前：自定义端点 · ${escapeHtml(s.customModel || "local-model")}</strong><br>请填写端点 URL 与模型名称，API Key 视情况填写。`;
+        }
+
+        if (provider === "puter") {
+          baseUrlLabel.textContent = "API Base URL";
+          baseUrlTag.textContent = "Puter 模式可留空";
+          baseUrlTag.className = "field-tag ok";
+          apiBaseUrl.value = "";
+          apiBaseUrl.placeholder = "Puter 模式可留空（不填也行）";
+          baseUrlHint.textContent = "Puter AI 使用内置端点。若切换到 OpenAI / 自定义端点，请在此填写对应 URL。";
+        } else if (provider === "openai") {
+          baseUrlLabel.textContent = "API Base URL";
+          baseUrlTag.textContent = "必填";
+          baseUrlTag.className = "field-tag";
+          apiBaseUrl.value = s.openaiBase || "https://api.openai.com/v1";
+          apiBaseUrl.placeholder = "https://api.openai.com/v1";
+          baseUrlHint.textContent = "OpenAI 官方端点通常为 https://api.openai.com/v1。";
+        } else if (provider === "ollama") {
+          baseUrlLabel.textContent = "Ollama 地址";
+          baseUrlTag.textContent = "必填";
+          baseUrlTag.className = "field-tag";
+          apiBaseUrl.value = s.ollamaBase || "http://localhost:11434/v1";
+          apiBaseUrl.placeholder = "http://localhost:11434/v1";
+          baseUrlHint.textContent = "确保 Ollama 已启动。默认端口 11434。";
+        } else {
+          baseUrlLabel.textContent = "端点 URL";
+          baseUrlTag.textContent = "必填";
+          baseUrlTag.className = "field-tag";
+          apiBaseUrl.value = s.customBase || "http://127.0.0.1:8080/v1";
+          apiBaseUrl.placeholder = "http://127.0.0.1:8080/v1";
+          baseUrlHint.textContent = "适用于 LM Studio、vLLM、LocalAI 等任何 OpenAI 兼容端点。";
+        }
+
+        if (provider === "puter") {
+          apiKeyLabel.textContent = "API Key";
+          apiKeyTag.textContent = "Puter 模式可留空";
+          apiKeyTag.className = "field-tag ok";
+          apiKey.value = "";
+          apiKey.placeholder = "Puter 模式可留空（不填也行）";
+          apiKeyHint.textContent = "Puter AI 免费且无需密钥。填写也会被忽略。";
+        } else if (provider === "openai") {
+          apiKeyLabel.textContent = "API Key";
+          apiKeyTag.textContent = "必填";
+          apiKeyTag.className = "field-tag";
+          apiKey.value = s.openaiKey || "";
+          apiKey.placeholder = "sk-…";
+          apiKeyHint.textContent = "密钥仅保存在浏览器 localStorage，不会上传到任何服务器。";
+        } else if (provider === "ollama") {
+          apiKeyLabel.textContent = "API Key";
+          apiKeyTag.textContent = "通常留空";
+          apiKeyTag.className = "field-tag ok";
+          apiKey.value = "";
+          apiKey.placeholder = "Ollama 通常不需要 API Key";
+          apiKeyHint.textContent = "Ollama 默认无鉴权。如通过反向代理加了鉴权，可在此填写。";
+        } else {
+          apiKeyLabel.textContent = "API Key（可选）";
+          apiKeyTag.textContent = "可选";
+          apiKeyTag.className = "field-tag ok";
+          apiKey.value = s.customKey || "";
+          apiKey.placeholder = "留空则不带 Authorization";
+          apiKeyHint.textContent = "若端点需要鉴权请填写，否则留空。";
+        }
+
+        if (provider === "puter") {
+          modelLabel.textContent = "Puter 模型";
+          modelInput.style.display = "none";
+          puterModelSelect.style.display = "block";
+          puterModelSelect.value = s.puterModel || "openai/gpt-4o-mini";
+          modelHint.textContent = "首次调用会自动弹出登录/授权窗口，无需手动填写密钥。";
+        } else if (provider === "openai") {
+          modelLabel.textContent = "模型名称";
+          modelInput.style.display = "block";
+          puterModelSelect.style.display = "none";
+          modelInput.value = s.openaiModel || "gpt-4o-mini";
+          modelInput.placeholder = "gpt-4o-mini";
+          modelHint.textContent = "例如 gpt-4o-mini、gpt-4o、deepseek-chat 等。";
+        } else if (provider === "ollama") {
+          modelLabel.textContent = "模型名称";
+          modelInput.style.display = "block";
+          puterModelSelect.style.display = "none";
+          modelInput.value = s.ollamaModel || "llama3.2";
+          modelInput.placeholder = "llama3.2";
+          modelHint.textContent = "例如 llama3.2、qwen2.5、mistral 等已拉取的模型。";
+        } else {
+          modelLabel.textContent = "模型名称";
+          modelInput.style.display = "block";
+          puterModelSelect.style.display = "none";
+          modelInput.value = s.customModel || "local-model";
+          modelInput.placeholder = "local-model";
+          modelHint.textContent = "填写端点所加载的模型名称。";
+        }
+      }
+
+      function collectSettingsFromUI() {
+        const provider = providerSelect.value;
+        const s = { ...state.settings };
+        s.provider = provider;
+        s.temperature = parseFloat(temperature.value);
+        s.topP = parseFloat(topP.value);
+        s.maxTokens = parseInt(maxTokens.value, 10) || 2048;
+        s.systemExtra = systemExtra.value.trim();
+        s.stream = streamEnabled.checked;
+        s.fontSize = state.settings.fontSize;
+
+        const baseVal = apiBaseUrl.value.trim();
+        const keyVal = apiKey.value.trim();
+        const modelVal = modelInput.value.trim();
+        const puterVal = puterModelSelect.value;
+
+        if (provider === "puter") {
+          s.puterModel = puterVal;
+        } else if (provider === "openai") {
+          s.openaiBase = baseVal;
+          s.openaiKey = keyVal;
+          s.openaiModel = modelVal;
+        } else if (provider === "ollama") {
+          s.ollamaBase = baseVal;
+          s.ollamaModel = modelVal;
+        } else if (provider === "custom") {
+          s.customBase = baseVal;
+          s.customKey = keyVal;
+          s.customModel = modelVal;
+        }
+        return s;
+      }
+
+      function openProviderModal() {
+        const s = state.settings;
+        providerSelect.value = s.provider;
+        temperature.value = s.temperature ?? 0.7;
+        tempVal.textContent = (s.temperature ?? 0.7).toFixed(1);
+        topP.value = s.topP ?? 1.0;
+        topPVal.textContent = (s.topP ?? 1.0).toFixed(2);
+        maxTokens.value = s.maxTokens ?? 2048;
+        systemExtra.value = s.systemExtra || "";
+        streamEnabled.checked = s.stream !== false;
+        testStatus.classList.remove("show");
+        testStatus.textContent = "";
+        updateProviderUI(s.provider, s);
+        providerModal.classList.add("show");
+      }
+
+      function closeProviderModalFn() { providerModal.classList.remove("show"); }
+
+      function saveProviderSettings() {
+        state.settings = collectSettingsFromUI();
+        saveState();
+        updateTopbar();
+        closeProviderModalFn();
+        const role = getActiveRole();
+        if (role) {
+          getChat(role.id).push({
+            role: "system",
+            content: `已保存设置 · 提供者：${getProviderLabel()}`
+          });
+          renderChat();
+        }
+      }
+
+      function resolveEndpoint(settings, roleOverride) {
+        if (settings.provider === "openai") {
+          return {
+            baseUrl: (settings.openaiBase || "").replace(/\/+$/, ""),
+            apiKey: settings.openaiKey,
+            model: roleOverride || settings.openaiModel
+          };
+        }
+        if (settings.provider === "ollama") {
+          return {
+            baseUrl: (settings.ollamaBase || "").replace(/\/+$/, ""),
+            apiKey: "",
+            model: roleOverride || settings.ollamaModel
+          };
+        }
+        if (settings.provider === "custom") {
+          return {
+            baseUrl: (settings.customBase || "").replace(/\/+$/, ""),
+            apiKey: settings.customKey,
+            model: roleOverride || settings.customModel
+          };
+        }
+        return null;
+      }
+
+      // ==================== 测试连接 ====================
+      async function testConnection() {
+        testBtn.disabled = true;
+        testBtn.textContent = "测试中…";
+        testStatus.classList.add("show");
+        testStatus.style.color = "var(--text-2)";
+        testStatus.textContent = "正在发送测试消息…";
+
+        const uiSettings = collectSettingsFromUI();
+        try {
+          let reply = "";
+          if (uiSettings.provider === "puter") {
+            if (typeof puter === "undefined" || !puter.ai) throw new Error("Puter.js 尚未加载完成，请检查网络后重试。");
+            const r = await puter.ai.chat(
+              [{ role: "user", content: "请只回复两个字母：OK" }],
+              { model: uiSettings.puterModel, temperature: uiSettings.temperature, max_tokens: 30 }
+            );
+            reply = typeof r === "string" ? r
+              : (r?.message?.content || r?.text || JSON.stringify(r).slice(0, 100));
+          } else {
+            const ep = resolveEndpoint(uiSettings, "");
+            if (!ep || !ep.baseUrl) throw new Error("请先填写 API Base URL。");
+            const headers = { "Content-Type": "application/json" };
+            if (ep.apiKey) headers["Authorization"] = "Bearer " + ep.apiKey;
+            const res = await fetch(ep.baseUrl + "/chat/completions", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                model: ep.model || "gpt-4o-mini",
+                messages: [{ role: "user", content: "请只回复两个字母：OK" }],
+                temperature: uiSettings.temperature,
+                max_tokens: 30,
+                stream: false
+              })
+            });
+            if (!res.ok) {
+              const t = await res.text().catch(() => "");
+              let msg = t.slice(0, 200);
+              try { const j = JSON.parse(t); msg = j.error?.message || j.message || msg; } catch (e) {}
+              throw new Error(`HTTP ${res.status}: ${msg}`);
+            }
+            const j = await res.json();
+            reply = j.choices?.[0]?.message?.content || j.choices?.[0]?.text || "（空回复）";
+          }
+          testStatus.style.color = "var(--success)";
+          testStatus.textContent = "✅ 连接成功！模型回复：" + String(reply).slice(0, 120);
+        } catch (e) {
+          testStatus.style.color = "var(--danger)";
+          testStatus.textContent = "❌ 连接失败：" + (e.message || e);
+        } finally {
+          testBtn.disabled = false;
+          testBtn.textContent = "🔌 测试连接";
+        }
+      }
+
+      // ==================== 构建消息 ====================
+      function buildMessages(role, userText) {
+        const messages = [];
+        const settings = state.settings;
+
+        let sys = (role.prompt || "").trim();
+        if (settings.systemExtra && settings.systemExtra.trim()) {
+          sys = sys ? sys + "\n\n" + settings.systemExtra.trim() : settings.systemExtra.trim();
+        }
+        if (sys) messages.push({ role: "system", content: sys });
+
+        if (role.memory !== false) {
+          getChat(role.id)
+            .filter(m => m.role === "user" || m.role === "assistant")
+            .slice(-12)
+            .forEach(m => messages.push({ role: m.role, content: m.content }));
+        }
+        messages.push({ role: "user", content: userText });
+        return messages;
+      }
+
+      // ==================== 发送消息 ====================
+      async function sendMessage() {
+        const text = input.value.trim();
+        if (!text) return;
+        const role = getActiveRole();
+        if (!role) return;
+
+        const chat = getChat(role.id);
+        chat.push({ role: "user", content: text });
+        renderChat();
+        input.value = "";
+        autoResizeInput();
+        sendBtn.disabled = true;
+
+        const assistantMsg = { role: "assistant", content: "" };
+        chat.push(assistantMsg);
+        renderChat();
+
+        const assistantEl = chatArea.lastElementChild;
+        if (assistantEl) assistantEl.classList.add("streaming");
+
+        try {
+          const messages = buildMessages(role, text);
+          const settings = state.settings;
+          const useStream = settings.stream !== false;
+          const modelOverride = role.modelOverride || "";
+
+          if (settings.provider === "puter") {
+            await callPuter(messages, modelOverride, useStream, assistantMsg, assistantEl);
+          } else {
+            const ep = resolveEndpoint(settings, modelOverride);
+            await callOpenAICompatible(ep, messages, useStream, assistantMsg, assistantEl);
+          }
+        } catch (err) {
+          assistantMsg.content = "⚠️ 出错了：" + (err.message || "未知错误");
+          if (assistantEl) {
+            assistantEl.textContent = assistantMsg.content;
+            assistantEl.classList.remove("streaming");
+          }
+        } finally {
+          if (assistantEl) assistantEl.classList.remove("streaming");
+          saveState();
+          sendBtn.disabled = false;
+          input.focus();
+          scrollToBottom();
+        }
+      }
+
+      async function callPuter(messages, modelOverride, useStream, assistantMsg, assistantEl) {
+        if (typeof puter === "undefined" || !puter.ai) {
+          throw new Error("Puter.js 尚未加载完成，请稍后重试或检查网络。");
+        }
+        const s = state.settings;
+        const model = modelOverride || s.puterModel || "openai/gpt-4o-mini";
+
+        const opts = {
+          model,
+          stream: useStream,
+          temperature: s.temperature,
+          max_tokens: s.maxTokens
+        };
+        if (s.topP && Math.abs(s.topP - 1) > 0.001) opts.top_p = s.topP;
+
+        if (useStream) {
+          const resp = await puter.ai.chat(messages, opts);
+          for await (const part of resp) {
+            if (part?.text) {
+              assistantMsg.content += part.text;
+              if (assistantEl) assistantEl.textContent = assistantMsg.content;
+              scrollToBottom();
+            }
+          }
+        } else {
+          const resp = await puter.ai.chat(messages, opts);
+          let content = "";
+          if (typeof resp === "string") content = resp;
+          else if (resp?.message?.content) content = resp.message.content;
+          else if (resp?.text) content = resp.text;
+          else content = String(resp);
+          assistantMsg.content = content;
+          if (assistantEl) assistantEl.textContent = content;
+        }
+        if (!assistantMsg.content) {
+          assistantMsg.content = "（Puter 返回了空回复，请检查模型或重试）";
+          if (assistantEl) assistantEl.textContent = assistantMsg.content;
+        }
+      }
+
+      async function callOpenAICompatible(ep, messages, useStream, assistantMsg, assistantEl) {
+        if (!ep || !ep.baseUrl) throw new Error("请先在设置中填写 API Base URL");
+        const s = state.settings;
+        const url = ep.baseUrl + "/chat/completions";
+        const headers = { "Content-Type": "application/json" };
+        if (ep.apiKey) headers["Authorization"] = "Bearer " + ep.apiKey;
+
+        const body = {
+          model: ep.model || "gpt-4o-mini",
+          messages,
+          stream: useStream,
+          temperature: s.temperature,
+          max_tokens: s.maxTokens
+        };
+        if (s.topP && Math.abs(s.topP - 1) > 0.001) body.top_p = s.topP;
+
+        const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          let detail = errText.slice(0, 300);
+          try { const j = JSON.parse(errText); detail = j.error?.message || j.message || detail; } catch (e) {}
+          throw new Error(`HTTP ${res.status}: ${detail}`);
+        }
+
+        if (useStream && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith("data:")) continue;
+              const data = trimmed.slice(5).trim();
+              if (data === "[DONE]") continue;
+              try {
+                const json = JSON.parse(data);
+                const delta = json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || "";
+                if (delta) {
+                  assistantMsg.content += delta;
+                  if (assistantEl) assistantEl.textContent = assistantMsg.content;
+                  scrollToBottom();
+                }
+              } catch (e) {}
+            }
+          }
+        } else {
+          const json = await res.json();
+          const content = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+          assistantMsg.content = content || "（模型返回空内容）";
+          if (assistantEl) assistantEl.textContent = assistantMsg.content;
+        }
+        if (!assistantMsg.content) {
+          assistantMsg.content = "（模型返回空内容，请检查模型名称或参数）";
+          if (assistantEl) assistantEl.textContent = assistantMsg.content;
+        }
+      }
+
+      // ==================== 输入框自适应 ====================
+      function autoResizeInput() {
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+      }
+
+      // ==================== 事件 ====================
+      function bindEvents() {
+        menuBtn.addEventListener("click", () => sidebar.classList.toggle("open"));
+        document.addEventListener("click", (e) => {
+          if (window.innerWidth <= 820 && sidebar.classList.contains("open")) {
+            if (!sidebar.contains(e.target) && e.target !== menuBtn) sidebar.classList.remove("open");
+          }
+        });
+
+        addRoleBtn.addEventListener("click", () => openRoleModal(null));
+        editCurrentRoleBtn.addEventListener("click", () => {
+          if (state.activeRoleId) openRoleModal(state.activeRoleId);
+        });
+        fontBtn.addEventListener("click", cycleFontSize);
+
+        closeRoleModal.addEventListener("click", closeRoleModalFn);
+        cancelRoleBtn.addEventListener("click", closeRoleModalFn);
+        saveRoleBtn.addEventListener("click", saveRole);
+        deleteRoleBtn.addEventListener("click", deleteRole);
+        roleModal.addEventListener("click", (e) => { if (e.target === roleModal) closeRoleModalFn(); });
+
+        providerBtn.addEventListener("click", openProviderModal);
+        providerBadge.addEventListener("click", openProviderModal);
+
+        closeProviderModal.addEventListener("click", closeProviderModalFn);
+        closeProviderBtn.addEventListener("click", closeProviderModalFn);
+        saveProviderBtn.addEventListener("click", saveProviderSettings);
+        providerModal.addEventListener("click", (e) => { if (e.target === providerModal) closeProviderModalFn(); });
+
+        providerSelect.addEventListener("change", () => {
+          const tmp = collectSettingsFromUI();
+          updateProviderUI(providerSelect.value, tmp);
+        });
+
+        temperature.addEventListener("input", () => { tempVal.textContent = parseFloat(temperature.value).toFixed(1); });
+        topP.addEventListener("input", () => { topPVal.textContent = parseFloat(topP.value).toFixed(2); });
+        testBtn.addEventListener("click", testConnection);
+
+        sendBtn.addEventListener("click", sendMessage);
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (!sendBtn.disabled) sendMessage();
+          }
+        });
+        input.addEventListener("input", autoResizeInput);
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            if (roleModal.classList.contains("show")) closeRoleModalFn();
+            if (providerModal.classList.contains("show")) closeProviderModalFn();
+          }
+        });
+      }
+
+      // ==================== 初始化 ====================
+      function init() {
+        loadState();
+        if (!state.activeRoleId && state.roles.length > 0) state.activeRoleId = state.roles[0].id;
+        applyFontScale(state.settings.fontSize || 1.2);
+        renderRoles();
+        renderChat();
+        updateTopbar();
+        bindEvents();
+        autoResizeInput();
+        if (window.innerWidth <= 820) sidebar.classList.remove("open");
+      }
+
+      init();
+    })();
+  </script>
+
+  <!-- ========== 3D 小智 + 衣橱（独立模块，不干扰聊天逻辑） ========== -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+    const $ = s => document.querySelector(s);
+    const stage = $('#vrmStage');
+    const info  = $('#cpInfo');
+    const modal = $('#wardrobeModal');
+    const KEY   = 'xiaozhi_wardrobe_v1';
+
+    /* ---------- Three 场景 ---------- */
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    stage.appendChild(renderer.domElement);
+
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x40504c, 1.9));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.7);
+    keyLight.position.set(1.5, 2.5, 2.5);
+    scene.add(keyLight);
+
+    const root = new THREE.Group();
+    scene.add(root);
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      const dist = 1.75 / 2 / Math.tan(camera.fov * Math.PI / 360);
+      camera.position.set(0, 0.9, dist);
+      camera.lookAt(0, 0.9, 0);
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(stage);
+
+    /* ---------- 材质分类 ---------- */
+    const CLOTH_K = ['cloth','shirt','top','dress','pant','skirt','outfit','uniform','costume','jacket','coat','sweater','hoodie','kimono','yukata','衣','服','裙','褲','襪','鞋'];
+    const SKIN_K  = ['skin','face','body','eye','brow','hair','mouth','teeth','tongue','lash','head','arm','leg','hand','foot','肌','臉','髮','眼','口','齒'];
+
+    const allMats = [], clothMats = [], origCol = new Map();
+    let curHex = null, curTarget = 'cloth', vrm = null;
+
+    function collect(obj) {
+      const seen = new Set();
+      obj.traverse(o => {
+        if (!o.isMesh || !o.material) return;
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+          if (seen.has(m) || !m.color) return;
+          seen.add(m);
+          allMats.push(m);
+          origCol.set(m, m.color.clone());
+        });
+      });
+      const hit = allMats.filter(m => CLOTH_K.some(k => (m.name || '').toLowerCase().includes(k)));
+      clothMats.push(...(hit.length ? hit :
+        allMats.filter(m => !SKIN_K.some(k => (m.name || '').toLowerCase().includes(k)))));
+      if (!clothMats.length) clothMats.push(...allMats);
+      info.textContent = `已载入小智 · 共 ${allMats.length} 个材质，其中 ${clothMats.length} 个判定为衣服材质。`;
+    }
+
+    /* ---------- 上色 ---------- */
+    function applyColor() {
+      allMats.forEach(m => m.color.copy(origCol.get(m)));
+      if (curHex !== null) {
+        (curTarget === 'all' ? allMats : clothMats).forEach(m => m.color.set(curHex));
+      }
+      allMats.forEach(m => m.needsUpdate = true);
+      syncSwatches();
+    }
+    const save = () => localStorage.setItem(KEY, JSON.stringify({ hex: curHex, target: curTarget }));
+
+    function setColor(hex) {
+      curHex = hex;
+      applyColor();
+      if (hex) $('#cpCustom').value = hex;
+      save();
+    }
+
+    function restore() {
+      try {
+        const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (!s) return;
+        curHex = s.hex ?? null;
+        curTarget = s.target || 'cloth';
+        document.querySelectorAll('[data-target]').forEach(b =>
+          b.setAttribute('aria-pressed', String(b.dataset.target === curTarget)));
+        applyColor();
+      } catch (e) {}
+    }
+
+    /* ---------- 色板 ---------- */
+    const PRESETS = [
+      { n:'原色',   hex:null },
+      { n:'雾粉',   hex:'#e89bb4' },
+      { n:'晴空蓝', hex:'#6bb8e0' },
+      { n:'薄荷绿', hex:'#7ec8a8' },
+      { n:'暖阳黄', hex:'#f0d678' },
+      { n:'薰衣草', hex:'#b8a5d8' },
+      { n:'珊瑚橘', hex:'#f08a7e' },
+      { n:'石墨灰', hex:'#4a4a4a' },
+      { n:'奶油白', hex:'#f2ede4' },
+      { n:'酒红',   hex:'#8c2f3d' },
+      { n:'森林绿', hex:'#2f5d4a' },
+      { n:'奶茶',   hex:'#b5794a' }
+    ];
+
+    const presetBox = $('#cpPresets');
+    PRESETS.forEach(p => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cp-swatch' + (p.hex ? '' : ' original');
+      b.dataset.hex = p.hex || '';
+      b.title = p.n;
+      b.setAttribute('aria-label', p.n);
+      if (p.hex) b.style.background = p.hex;
+      b.addEventListener('click', () => setColor(p.hex));
+      presetBox.appendChild(b);
+    });
+
+    function syncSwatches() {
+      presetBox.querySelectorAll('.cp-swatch').forEach(b => {
+        const h = b.dataset.hex;
+        b.setAttribute('aria-pressed', String(
+          curHex === null ? h === '' : h.toLowerCase() === String(curHex).toLowerCase()
+        ));
+      });
+    }
+
+    /* ---------- 交互 ---------- */
+    $('#cpCustom').addEventListener('input', e => setColor(e.target.value));
+    $('#cpReset').addEventListener('click', () => setColor(null));
+    $('#cpRandom').addEventListener('click', () => {
+      const pool = PRESETS.filter(p => p.hex);
+      setColor(pool[Math.floor(Math.random() * pool.length)].hex);
+    });
+    document.querySelectorAll('[data-target]').forEach(b => {
+      b.addEventListener('click', () => {
+        curTarget = b.dataset.target;
+        document.querySelectorAll('[data-target]').forEach(x =>
+          x.setAttribute('aria-pressed', String(x === b)));
+        applyColor();
+        save();
+      });
+    });
+
+    const closeWardrobe = () => modal.classList.remove('show');
+    $('#wardrobeBtn').addEventListener('click', () => modal.classList.add('show'));
+    $('#closeWardrobe').addEventListener('click', closeWardrobe);
+    $('#closeWardrobe2').addEventListener('click', closeWardrobe);
+    modal.addEventListener('click', e => { if (e.target === modal) closeWardrobe(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWardrobe(); });
+
+    /* ---------- 拖拽旋转 ---------- */
+    let yaw = 0, tYaw = 0, drag = null;
+    stage.addEventListener('pointerdown', e => { drag = e.clientX; stage.setPointerCapture(e.pointerId); });
+    stage.addEventListener('pointermove', e => {
+      if (drag === null) return;
+      tYaw += (e.clientX - drag) * 0.01;
+      drag = e.clientX;
+    });
+    const endDrag = () => { drag = null; };
+    stage.addEventListener('pointerup', endDrag);
+    stage.addEventListener('pointercancel', endDrag);
+
+    /* ---------- 加载 VRM ---------- */
+    const VRM_URL = 'https://raw.githubusercontent.com/pixiv/three-vrm/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm';
+    const loader = new GLTFLoader();
+    loader.register(p => new VRMLoaderPlugin(p));
+
+    loader.loadAsync(VRM_URL).then(g => {
+      const v = g.userData.vrm;
+      if (!v) throw new Error('not vrm');
+      VRMUtils.removeUnnecessaryVertices(v.scene);
+      VRMUtils.rotateVRM0(v);
+      v.scene.traverse(o => { o.frustumCulled = false; });
+      root.add(v.scene);
+      vrm = v;
+      collect(v.scene);
+      resize();
+      restore();
+    }).catch(e => {
+      console.warn(e);
+      info.textContent = '⚠️ 小智模型载入失败，请检查网络后重新整理页面。';
+    });
+
+    /* ---------- 渲染循环 ---------- */
+    const clock = new THREE.Clock();
+    (function loop() {
+      requestAnimationFrame(loop);
+      const dt = Math.min(clock.getDelta(), 0.1);
+      if (!modal.classList.contains('show')) return;
+      yaw += (tYaw - yaw) * Math.min(1, dt * 8);
+      root.rotation.y = yaw;
+      if (vrm) {
+        const head = vrm.humanoid?.getNormalizedBoneNode('head');
+        if (head) head.rotation.y = Math.sin(clock.elapsedTime * 0.6) * 0.1;
+        vrm.update(dt);
+      }
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
