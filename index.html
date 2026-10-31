@@ -398,6 +398,15 @@
     }
     #vrmStage:active { cursor: grabbing; }
     #vrmStage canvas { width: 100%; height: 100%; display: block; }
+    #chatAvatar {
+      position: absolute; right: 12px; top: 4.4rem;
+      width: 170px; height: 230px;
+      pointer-events: none; z-index: 5;
+    }
+    #chatAvatar canvas { width: 100%; height: 100%; display: block; }
+    #chatAvatar.hidden { display: none; }
+    @media (min-width: 821px) { .chat-area { padding-right: 190px; } }
+    @media (max-width: 820px) { #chatAvatar { width: 96px; height: 130px; right: 6px; top: 3.8rem; opacity: 0.95; } }
     .cp-presets {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
@@ -461,11 +470,13 @@
       <button class="menu-btn" id="menuBtn" aria-label="菜单">☰</button>
       <div class="role-title" id="currentRoleTitle">小智</div>
       <button class="provider-badge" id="providerBadge" title="点击打开模型与 API 设置">Puter AI</button>
+      <button class="btn sm" id="avatarToggle" title="显示/隐藏 3D 小智">🧍</button>
       <button class="btn sm" id="wardrobeBtn" title="小智的衣橱">🎨</button>
       <button class="btn sm font-btn" id="fontBtn" title="调整字体大小">A</button>
       <button class="btn sm" id="editCurrentRoleBtn" title="编辑当前角色">✎</button>
     </div>
 
+    <div id="chatAvatar"></div>
     <div class="chat-area" id="chatArea"></div>
 
     <div class="composer">
@@ -1224,6 +1235,7 @@
           let reply = "";
           if (uiSettings.provider === "puter") {
             if (typeof puter === "undefined" || !puter.ai) throw new Error("Puter.js 尚未加载完成，请检查网络后重试。");
+            await ensurePuterAuth();
             const r = await puter.ai.chat(
               [{ role: "user", content: "请只回复两个字母：OK" }],
               { model: uiSettings.puterModel, temperature: uiSettings.temperature, max_tokens: 30 }
@@ -1259,7 +1271,7 @@
           testStatus.textContent = "✅ 连接成功！模型回复：" + String(reply).slice(0, 120);
         } catch (e) {
           testStatus.style.color = "var(--danger)";
-          testStatus.textContent = "❌ 连接失败：" + (e.message || e);
+          testStatus.textContent = "❌ 连接失败：" + (e && e.message ? e.message : (typeof puterErrText === "function" ? puterErrText(e) : String(e)));
         } finally {
           testBtn.disabled = false;
           testBtn.textContent = "🔌 测试连接";
@@ -1307,6 +1319,7 @@
 
         const assistantEl = chatArea.lastElementChild;
         if (assistantEl) assistantEl.classList.add("streaming");
+        window.dispatchEvent(new CustomEvent("xz-speak", { detail: true }));
 
         try {
           const messages = buildMessages(role, text);
@@ -1321,12 +1334,13 @@
             await callOpenAICompatible(ep, messages, useStream, assistantMsg, assistantEl);
           }
         } catch (err) {
-          assistantMsg.content = "⚠️ 出错了：" + (err.message || "未知错误");
+          assistantMsg.content = "⚠️ 出错了：" + (err && err.message ? err.message : (typeof puterErrText === "function" ? puterErrText(err) : "未知错误"));
           if (assistantEl) {
             assistantEl.textContent = assistantMsg.content;
             assistantEl.classList.remove("streaming");
           }
         } finally {
+          window.dispatchEvent(new CustomEvent("xz-speak", { detail: false }));
           if (assistantEl) assistantEl.classList.remove("streaming");
           saveState();
           sendBtn.disabled = false;
@@ -1335,23 +1349,27 @@
         }
       }
 
-      async function callPuter(messages, modelOverride, useStream, assistantMsg, assistantEl) {
-        if (typeof puter === "undefined" || !puter.ai) {
-          throw new Error("Puter.js 尚未加载完成，请稍后重试或检查网络。");
+      // Puter 的错误常是纯对象（非 Error），统一转成可读文字
+      function puterErrText(e) {
+        if (!e) return "未知错误";
+        if (typeof e === "string") return e;
+        const m = e.message || e.error?.message || e.error?.code || e.error || e.code || e.msg;
+        if (m && typeof m === "string") return m;
+        try { return JSON.stringify(e).slice(0, 200); } catch (_) { return String(e); }
+      }
+      // GitHub Pages 等 https 站点需先登入 Puter（必须在点击手势内触发弹窗）
+      async function ensurePuterAuth() {
+        try {
+          if (puter.auth && typeof puter.auth.isSignedIn === "function" && !puter.auth.isSignedIn()) {
+            await puter.auth.signIn();
+          }
+        } catch (e) {
+          throw new Error("Puter 登入未完成（请允许弹出窗口后重试）：" + puterErrText(e));
         }
-        const s = state.settings;
-        const model = modelOverride || s.puterModel || "openai/gpt-4o-mini";
-
-        const opts = {
-          model,
-          stream: useStream,
-          temperature: s.temperature,
-          max_tokens: s.maxTokens
-        };
-        if (s.topP && Math.abs(s.topP - 1) > 0.001) opts.top_p = s.topP;
-
+      }
+      async function puterChatOnce(messages, opts, useStream, assistantMsg, assistantEl) {
+        const resp = await puter.ai.chat(messages, opts);
         if (useStream) {
-          const resp = await puter.ai.chat(messages, opts);
           for await (const part of resp) {
             if (part?.text) {
               assistantMsg.content += part.text;
@@ -1360,15 +1378,39 @@
             }
           }
         } else {
-          const resp = await puter.ai.chat(messages, opts);
           let content = "";
           if (typeof resp === "string") content = resp;
-          else if (resp?.message?.content) content = resp.message.content;
+          else if (resp?.message?.content) content = Array.isArray(resp.message.content) ? resp.message.content.map(c => c.text || "").join("") : resp.message.content;
           else if (resp?.text) content = resp.text;
           else content = String(resp);
           assistantMsg.content = content;
           if (assistantEl) assistantEl.textContent = content;
         }
+      }
+
+      async function callPuter(messages, modelOverride, useStream, assistantMsg, assistantEl) {
+        if (typeof puter === "undefined" || !puter.ai) {
+          throw new Error("Puter.js 尚未加载完成，请稍后重试或检查网络。");
+        }
+        await ensurePuterAuth();
+        const s = state.settings;
+        const model = modelOverride || s.puterModel || "openai/gpt-4o-mini";
+        const base = { stream: useStream, temperature: s.temperature, max_tokens: s.maxTokens };
+        if (s.topP && Math.abs(s.topP - 1) > 0.001) base.top_p = s.topP;
+
+        // 备援：原模型名 → 去掉供应商前缀 → 不指定模型（用 Puter 默认）
+        const tries = [{ ...base, model }];
+        if (model.includes("/")) tries.push({ ...base, model: model.split("/").pop() });
+        tries.push({ stream: useStream });
+        let lastErr = null;
+        for (const opts of tries) {
+          try {
+            assistantMsg.content = "";
+            await puterChatOnce(messages, opts, useStream, assistantMsg, assistantEl);
+            lastErr = null; break;
+          } catch (e) { lastErr = e; console.warn("Puter 尝试失败", opts, e); }
+        }
+        if (lastErr) throw new Error(puterErrText(lastErr));
         if (!assistantMsg.content) {
           assistantMsg.content = "（Puter 返回了空回复，请检查模型或重试）";
           if (assistantEl) assistantEl.textContent = assistantMsg.content;
@@ -1524,6 +1566,7 @@
 
     const $ = s => document.querySelector(s);
     const stage = $('#vrmStage');
+    const chatBox = $('#chatAvatar');
     const info  = $('#cpInfo');
     const modal = $('#wardrobeModal');
     const KEY   = 'xiaozhi_wardrobe_v1';
@@ -1532,7 +1575,7 @@
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    stage.appendChild(renderer.domElement);
+    chatBox.appendChild(renderer.domElement);
 
     const scene  = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
@@ -1545,16 +1588,33 @@
     scene.add(root);
 
     function resize() {
-      const w = stage.clientWidth, h = stage.clientHeight;
+      const host = renderer.domElement.parentElement;
+      if (!host) return;
+      const w = host.clientWidth, h = host.clientHeight;
       if (!w || !h) return;
+      const inChat = host === chatBox;
+      const span = inChat ? 0.95 : 1.75, cy = inChat ? 1.2 : 0.9;   // 聊天：半身；衣橱：全身
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      const dist = 1.75 / 2 / Math.tan(camera.fov * Math.PI / 360);
-      camera.position.set(0, 0.9, dist);
-      camera.lookAt(0, 0.9, 0);
+      const dist = span / 2 / Math.tan(camera.fov * Math.PI / 360);
+      camera.position.set(0, cy, dist);
+      camera.lookAt(0, cy, 0);
       camera.updateProjectionMatrix();
     }
-    new ResizeObserver(resize).observe(stage);
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage); ro.observe(chatBox);
+
+    // 同一个 canvas：衣橱开启时移到衣橱，关闭后回到聊天画面
+    function mount() {
+      const target = modal.classList.contains('show') ? stage : chatBox;
+      if (renderer.domElement.parentElement !== target) { target.appendChild(renderer.domElement); resize(); }
+    }
+    new MutationObserver(mount).observe(modal, { attributes: true, attributeFilter: ['class'] });
+    $('#avatarToggle').addEventListener('click', () => chatBox.classList.toggle('hidden'));
+
+    // 说话状态（由聊天脚本通过事件通知）
+    let speaking = false, nextBlink = 2, blink = 0;
+    window.addEventListener('xz-speak', e => { speaking = !!e.detail; });
 
     /* ---------- 材质分类 ---------- */
     const CLOTH_K = ['cloth','shirt','top','dress','pant','skirt','outfit','uniform','costume','jacket','coat','sweater','hoodie','kimono','yukata','衣','服','裙','褲','襪','鞋'];
@@ -1711,12 +1771,25 @@
     (function loop() {
       requestAnimationFrame(loop);
       const dt = Math.min(clock.getDelta(), 0.1);
-      if (!modal.classList.contains('show')) return;
-      yaw += (tYaw - yaw) * Math.min(1, dt * 8);
-      root.rotation.y = yaw;
+      const inWardrobe = modal.classList.contains('show');
+      if (!inWardrobe && chatBox.classList.contains('hidden')) return;
+      const t = clock.elapsedTime;
+      if (inWardrobe) { yaw += (tYaw - yaw) * Math.min(1, dt * 8); root.rotation.y = yaw; }
+      else root.rotation.y = Math.sin(t * 0.5) * 0.15;
       if (vrm) {
         const head = vrm.humanoid?.getNormalizedBoneNode('head');
-        if (head) head.rotation.y = Math.sin(clock.elapsedTime * 0.6) * 0.1;
+        if (head) {
+          head.rotation.y = Math.sin(t * 0.6) * 0.1;
+          head.rotation.x = speaking ? Math.sin(t * 5) * 0.05 : 0;
+        }
+        const em = vrm.expressionManager;
+        if (em) {
+          em.setValue('aa', speaking ? 0.25 + 0.25 * (Math.sin(t * 16) + 1) / 2 * 1.6 : 0);
+          nextBlink -= dt;
+          if (nextBlink <= 0) { blink = 0.15; nextBlink = 2 + Math.random() * 3; }
+          blink = Math.max(0, blink - dt);
+          em.setValue('blink', blink > 0 ? 1 : 0);
+        }
         vrm.update(dt);
       }
       renderer.render(scene, camera);
