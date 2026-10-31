@@ -399,14 +399,14 @@
     #vrmStage:active { cursor: grabbing; }
     #vrmStage canvas { width: 100%; height: 100%; display: block; }
     #chatAvatar {
-      position: absolute; left: 12px; top: 4.4rem;
-      width: 170px; height: 230px;
+      position: absolute; left: 0; top: 3.7rem; bottom: 5.4rem;
+      width: min(38%, 420px);
       pointer-events: none; z-index: 5;
     }
     #chatAvatar canvas { width: 100%; height: 100%; display: block; }
     #chatAvatar.hidden { display: none; }
-    @media (min-width: 821px) { .chat-area { padding-left: 200px; } }
-    @media (max-width: 820px) { #chatAvatar { width: 96px; height: 130px; left: 4px; top: 3.8rem; } .chat-area { padding-left: 104px; } }
+    @media (min-width: 821px) { .chat-area { padding-left: calc(min(38%, 420px) + 8px); } }
+    @media (max-width: 820px) { #chatAvatar { width: 118px; left: 0; top: 3.8rem; bottom: 5rem; } .chat-area { padding-left: 122px; } }
     .cp-presets {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
@@ -538,6 +538,37 @@
             <option value="qwen2.5">Ollama · qwen2.5</option>
           </select>
           <div class="hint">仅对 Puter / Ollama 生效；OpenAI 兼容端点请使用全局模型。</div>
+        </div>
+        <div class="field">
+          <label>🔊 声音（台湾国语优先）</label>
+          <select id="roleVoice"></select>
+          <div class="hint">列表来自你的浏览器／系统；选「自动」会优先使用 zh-TW 台湾国语声音。</div>
+        </div>
+        <div class="field">
+          <label>语速：<span id="rvRateVal">1.00</span></label>
+          <input type="range" id="roleRate" min="0.5" max="2" step="0.05" value="1">
+        </div>
+        <div class="field">
+          <label>音调：<span id="rvPitchVal">1.00</span></label>
+          <input type="range" id="rolePitch" min="0" max="2" step="0.05" value="1">
+        </div>
+        <div class="field">
+          <label>音量：<span id="rvVolVal">1.00</span></label>
+          <input type="range" id="roleVolume" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="toggle-row">
+          <div>
+            <label class="tg-label">情绪语调</label>
+            <div class="hint" style="margin-top:2px;">依喜怒哀乐自动微调语速与音调。</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="roleVoiceEmo" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <button class="btn block" id="roleVoiceTest" type="button">▶ 试听</button>
+          <div class="hint">浏览器语音 API 只支持声音／语速／音调／音量，不支持频率或均衡器（EQ）调整。</div>
         </div>
       </div>
       <div class="modal-footer">
@@ -958,6 +989,7 @@
           roleColor.value = role.color || "#4f6ef7";
           roleMemory.checked = role.memory !== false;
           roleModelOverride.value = role.modelOverride || "";
+          fillVoiceUI(role.voice);
           deleteRoleBtn.style.display = state.roles.length > 1 ? "inline-flex" : "none";
         } else {
           roleModalTitle.textContent = "新增角色";
@@ -967,6 +999,7 @@
           roleColor.value = "#4f6ef7";
           roleMemory.checked = true;
           roleModelOverride.value = "";
+          fillVoiceUI(null);
           deleteRoleBtn.style.display = "none";
         }
         roleModal.classList.add("show");
@@ -992,7 +1025,8 @@
           avatar: roleAvatar.value.trim() || "🤖",
           color: roleColor.value,
           memory: roleMemory.checked,
-          modelOverride: roleModelOverride.value
+          modelOverride: roleModelOverride.value,
+          voice: readVoiceUI()
         };
         if (state.editingRoleId) {
           const idx = state.roles.findIndex(r => r.id === state.editingRoleId);
@@ -1280,7 +1314,7 @@
       }
 
       // ==================== 构建消息 ====================
-      function buildMessages(role, userText) {
+      function buildMessages(role, userText, extraSys) {
         const messages = [];
         const settings = state.settings;
 
@@ -1288,7 +1322,7 @@
         if (settings.systemExtra && settings.systemExtra.trim()) {
           sys = sys ? sys + "\n\n" + settings.systemExtra.trim() : settings.systemExtra.trim();
         }
-        sys = (sys ? sys + "\n\n" : "") + "【語言要求】請一律使用台灣繁體中文與台灣慣用語回覆，語氣自然口語，適合朗讀；避免使用 Markdown 符號。";
+        sys = (sys ? sys + "\n\n" : "") + "【語言要求】請一律使用台灣繁體中文與台灣慣用語回覆，語氣自然口語，適合朗讀；避免使用 Markdown 符號。\n【換裝能力】你可以替自己換衣服：當使用者要求換裝而系統未通知時，請在回覆最後加上 [換裝:顏色名]，顏色可為 粉、藍、綠、黃、紫、橘、紅、黑、灰、白、咖啡、原色。" + (extraSys ? "\n" + extraSys : "");
         if (sys) messages.push({ role: "system", content: sys });
 
         if (role.memory !== false) {
@@ -1344,8 +1378,46 @@
         syncTtsBtn();
         if (!ttsOn && window.speechSynthesis) { speechSynthesis.cancel(); window.dispatchEvent(new CustomEvent("xz-speak", { detail: false })); }
       });
-      function speakReply(text, emo) {
-        if (!ttsOn || !window.speechSynthesis || !text) return;
+      // ---- 角色语音设定 ----
+      const VOICE_DEF = { voiceURI: "", rate: 1, pitch: 1, volume: 1, emo: true };
+      const roleVoice = r => ({ ...VOICE_DEF, ...((r && r.voice) || {}) });
+      const $id = id => document.getElementById(id);
+      function populateVoiceSelect() {
+        const sel = $id("roleVoice");
+        const vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+        const zh = vs.filter(v => /^(zh|yue|cmn)/i.test(v.lang))
+          .sort((a, b) => (/zh[-_]TW/i.test(b.lang) ? 1 : 0) - (/zh[-_]TW/i.test(a.lang) ? 1 : 0));
+        sel.innerHTML = '<option value="">自动（优先台湾国语）</option>' +
+          zh.map(v => `<option value="${escapeHtml(v.voiceURI)}">${escapeHtml(v.name)} · ${escapeHtml(v.lang)}</option>`).join("");
+      }
+      function fillVoiceUI(v) {
+        const c = { ...VOICE_DEF, ...(v || {}) };
+        populateVoiceSelect();
+        $id("roleVoice").value = c.voiceURI || "";
+        $id("roleRate").value = c.rate; $id("rolePitch").value = c.pitch; $id("roleVolume").value = c.volume;
+        $id("roleVoiceEmo").checked = c.emo !== false;
+        syncVoiceLabels();
+      }
+      function readVoiceUI() {
+        return {
+          voiceURI: $id("roleVoice").value,
+          rate: parseFloat($id("roleRate").value), pitch: parseFloat($id("rolePitch").value),
+          volume: parseFloat($id("roleVolume").value), emo: $id("roleVoiceEmo").checked
+        };
+      }
+      function syncVoiceLabels() {
+        $id("rvRateVal").textContent = (+$id("roleRate").value).toFixed(2);
+        $id("rvPitchVal").textContent = (+$id("rolePitch").value).toFixed(2);
+        $id("rvVolVal").textContent = (+$id("roleVolume").value).toFixed(2);
+      }
+      ["roleRate", "rolePitch", "roleVolume"].forEach(id => $id(id).addEventListener("input", syncVoiceLabels));
+      $id("roleVoiceTest").addEventListener("click", () => {
+        const nm = ($id("roleName").value || "小智").trim();
+        speakText(`你好，我是${nm}，很高興認識你。今天想聊些什麼呢？`, readVoiceUI(), "neutral");
+      });
+
+      function speakText(text, cfg, emo) {
+        if (!window.speechSynthesis || !text) return;
         const clean = text
           .replace(/```[\s\S]*?```/g, " ")
           .replace(/https?:\/\/\S+/g, " ")
@@ -1354,20 +1426,67 @@
           .trim();
         const parts = clean.match(/[^。！？!?；;\n]+[。！？!?；;]?/g);
         if (!parts) return;
-        const prosody = { joy: [1.1, 1.25], anger: [1.15, 0.95], sad: [0.9, 0.85], fun: [1.0, 1.1], neutral: [1.0, 1.0] }[emo] || [1, 1];
+        const f = cfg.emo === false ? [1, 1] :
+          ({ joy: [1.1, 1.25], anger: [1.15, 0.95], sad: [0.9, 0.85], fun: [1.0, 1.1] }[emo] || [1, 1]);
+        const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+        const voices = speechSynthesis.getVoices();
+        const voice = (cfg.voiceURI && voices.find(v => v.voiceURI === cfg.voiceURI)) || twVoice;
         speechSynthesis.cancel();
         const chunks = parts.map(x => x.trim()).filter(Boolean);
         chunks.forEach((t, i) => {
           const u = new SpeechSynthesisUtterance(t);
-          u.lang = "zh-TW";
-          if (twVoice) u.voice = twVoice;
-          u.rate = prosody[0]; u.pitch = prosody[1];
+          u.lang = (voice && voice.lang) || "zh-TW";
+          if (voice) u.voice = voice;
+          u.rate = clamp(cfg.rate * f[0], 0.5, 2);
+          u.pitch = clamp(cfg.pitch * f[1], 0, 2);
+          u.volume = clamp(cfg.volume, 0, 1);
           if (i === 0) u.onstart = () => window.dispatchEvent(new CustomEvent("xz-speak", { detail: true }));
           if (i === chunks.length - 1) {
             u.onend = u.onerror = () => window.dispatchEvent(new CustomEvent("xz-speak", { detail: false }));
           }
           speechSynthesis.speak(u);
         });
+      }
+      function speakReply(text, emo) {
+        if (!ttsOn) return;
+        speakText(text, roleVoice(getActiveRole()), emo);
+      }
+
+      // ==================== 换装（说「换衣服」就会换）====================
+      const OUTFIT_COLORS = [
+        { re: /原本|原色|還原|还原|恢復|恢复/, hex: null, name: "原本的" },
+        { re: /粉|桃紅|桃红/, hex: "#e89bb4", name: "粉色" },
+        { re: /藍|蓝|天空/, hex: "#6bb8e0", name: "藍色" },
+        { re: /綠|绿|薄荷/, hex: "#7ec8a8", name: "綠色" },
+        { re: /黃|黄/, hex: "#f0d678", name: "黃色" },
+        { re: /紫|薰衣草/, hex: "#b8a5d8", name: "紫色" },
+        { re: /橘|橙|珊瑚/, hex: "#f08a7e", name: "橘色" },
+        { re: /紅|红|酒紅|酒红/, hex: "#c0392b", name: "紅色" },
+        { re: /黑|石墨/, hex: "#2f2f2f", name: "黑色" },
+        { re: /灰/, hex: "#8a8a8a", name: "灰色" },
+        { re: /白|奶油/, hex: "#f2ede4", name: "白色" },
+        { re: /咖啡|棕|奶茶/, hex: "#b5794a", name: "咖啡色" }
+      ];
+      let lastOutfit = null;
+      function applyOutfit(entry) {
+        lastOutfit = entry;
+        window.dispatchEvent(new CustomEvent("xz-outfit", { detail: { hex: entry.hex } }));
+        return entry.name;
+      }
+      function outfitByName(txt) {
+        if (/^#[0-9a-f]{6}$/i.test(txt.trim())) return { hex: txt.trim(), name: txt.trim() };
+        return OUTFIT_COLORS.find(c => c.re.test(txt)) || null;
+      }
+      const OUTFIT_INTENT = /(換|换|變|变|改|穿).{0,4}(衣服|衣|裝|装|穿搭|造型|服|裙|外套|上衣)|(衣服|穿搭|造型).{0,4}(換|换|變|变|改)|(穿|換|换).{0,3}(粉|藍|蓝|綠|绿|黃|黄|紫|橘|橙|紅|红|黑|白|灰|咖啡|棕)/;
+      function handleOutfitIntent(text) {
+        if (!OUTFIT_INTENT.test(text)) return "";
+        let entry = outfitByName(text);
+        if (!entry) {
+          const pool = OUTFIT_COLORS.filter(c => c.hex && c !== lastOutfit);
+          entry = pool[Math.floor(Math.random() * pool.length)];
+        }
+        const nm = applyOutfit(entry);
+        return `【系統通知】你剛剛已換上「${nm}」的衣服，請用角色口吻自然回應（可描述新衣服的感覺），不要再輸出換裝標籤。`;
       }
 
       // ==================== 发送消息 ====================
@@ -1394,7 +1513,8 @@
         window.dispatchEvent(new CustomEvent("xz-speak", { detail: true }));
 
         try {
-          const messages = buildMessages(role, text);
+          const outfitNote = handleOutfitIntent(text);
+          const messages = buildMessages(role, text, outfitNote);
           const settings = state.settings;
           const useStream = settings.stream !== false;
           const modelOverride = role.modelOverride || "";
@@ -1414,7 +1534,15 @@
         } finally {
           window.dispatchEvent(new CustomEvent("xz-speak", { detail: false }));
           try {
-            const reply = assistantMsg.content || "";
+            let reply = assistantMsg.content || "";
+            const tag = reply.match(/\[換裝[:：]\s*([^\]]+)\]/);
+            if (tag) {
+              const ent = outfitByName(tag[1]);
+              if (ent) applyOutfit(ent);
+              reply = reply.replace(/\s*\[換裝[:：][^\]]*\]/g, "").trim();
+              assistantMsg.content = reply;
+              if (assistantEl) assistantEl.textContent = reply;
+            }
             if (reply && !reply.startsWith("⚠️")) {
               const emo = classifyEmotion(reply);
               window.dispatchEvent(new CustomEvent("xz-emotion", { detail: emo }));
@@ -1673,10 +1801,11 @@
       const w = host.clientWidth, h = host.clientHeight;
       if (!w || !h) return;
       const inChat = host === chatBox;
-      const span = inChat ? 0.95 : 1.75, cy = inChat ? 1.2 : 0.9;   // 聊天：半身；衣橱：全身
+      const span = inChat ? 1.7 : 1.75, cy = inChat ? 0.88 : 0.9;   // 全身置中（含举手空间）
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      const dist = span / 2 / Math.tan(camera.fov * Math.PI / 360);
+      const tan = Math.tan(camera.fov * Math.PI / 360);
+      const dist = Math.max(span / 2 / tan, (1.3 / camera.aspect) / 2 / tan);
       camera.position.set(0, cy, dist);
       camera.lookAt(0, cy, 0);
       camera.updateProjectionMatrix();
@@ -1812,6 +1941,13 @@
       });
     });
 
+    // 聊天中由 AI / 使用者指令触发换装（只染衣服材质）
+    window.addEventListener('xz-outfit', e => {
+      curTarget = 'cloth';
+      document.querySelectorAll('[data-target]').forEach(b =>
+        b.setAttribute('aria-pressed', String(b.dataset.target === 'cloth')));
+      setColor(e.detail ? e.detail.hex : null);
+    });
     const closeWardrobe = () => modal.classList.remove('show');
     $('#wardrobeBtn').addEventListener('click', () => modal.classList.add('show'));
     $('#closeWardrobe').addEventListener('click', closeWardrobe);
@@ -1897,7 +2033,7 @@
       if (!inWardrobe && chatBox.classList.contains('hidden')) return;
       const t = clock.elapsedTime;
       if (inWardrobe) { yaw += (tYaw - yaw) * Math.min(1, dt * 8); root.rotation.y = yaw; }
-      else root.rotation.y = 0.2;                       // 聊天画面：固定在左侧，微微朝向对话区
+      else root.rotation.y = 0;                          // 聊天画面：正面置中、固定不转
       if (vrm) {
         if (speaking) emoUntil = Math.max(emoUntil, t + 3);
         if (emotion !== 'neutral' && t > emoUntil) emotion = 'neutral';
