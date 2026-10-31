@@ -1290,8 +1290,12 @@
         if (sys) messages.push({ role: "system", content: sys });
 
         if (role.memory !== false) {
+          // 去掉刚推入的「本轮用户消息 + 空的助手占位」，避免重复与空 content
           getChat(role.id)
-            .filter(m => m.role === "user" || m.role === "assistant")
+            .slice(0, -2)
+            .filter(m => (m.role === "user" || m.role === "assistant")
+              && typeof m.content === "string" && m.content.trim()
+              && !m.content.startsWith("⚠️ 出错了"))
             .slice(-12)
             .forEach(m => messages.push({ role: m.role, content: m.content }));
         }
