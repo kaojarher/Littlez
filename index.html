@@ -414,6 +414,14 @@
     .msg.assistant { background: rgba(255,255,255,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-color: rgba(220,225,235,0.6); box-shadow: none; }
     .msg.user { background: rgba(79,110,247,0.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
     @media (min-width: 821px) { .msg { max-width: 58%; } }
+    /* 对话区只占画面下方，顶端不超过人物腰部（约角色高度的 52%，已扣除输入区） */
+    .chat-area {
+      flex: 0 0 auto; margin-top: auto;
+      height: calc((100% - 3.6rem) * 0.52 - 5rem);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
+    }
+    body.no-avatar .chat-area { flex: 1; margin-top: 0; height: auto; -webkit-mask-image: none; mask-image: none; }
     .cp-presets {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
@@ -1826,7 +1834,10 @@
       if (renderer.domElement.parentElement !== target) { target.appendChild(renderer.domElement); resize(); }
     }
     new MutationObserver(mount).observe(modal, { attributes: true, attributeFilter: ['class'] });
-    $('#avatarToggle').addEventListener('click', () => chatBox.classList.toggle('hidden'));
+    $('#avatarToggle').addEventListener('click', () => {
+      chatBox.classList.toggle('hidden');
+      document.body.classList.toggle('no-avatar', chatBox.classList.contains('hidden'));
+    });
 
     // 说话状态（由聊天脚本通过事件通知）
     let speaking = false, nextBlink = 2, blink = 0;
