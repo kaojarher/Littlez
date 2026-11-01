@@ -2,7 +2,7 @@
    - 殼層（HTML / 圖示）：網路優先，離線時退回快取，確保更新能即時生效
    - 3D 模型（raw.githubusercontent.com）：快取優先，離線也能顯示角色
    - AI 對話 API（Puter / OpenAI 相容端點 / Ollama）一律不攔截 */
-var VERSION = 'xiaozhi-v1';
+var VERSION = 'xiaozhi-v3';
 var SHELL = VERSION + '-shell';
 var RUNTIME = VERSION + '-runtime';
 var SHELL_FILES = [
@@ -57,7 +57,9 @@ self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   var url = new URL(req.url);
-  if (url.origin === self.location.origin) {
+  if (url.origin === self.location.origin && /\.vrm($|\?)/i.test(url.pathname)) {
+    e.respondWith(cacheFirst(req, RUNTIME));      // 大型模型檔：快取優先，避免每次重新下載
+  } else if (url.origin === self.location.origin) {
     e.respondWith(networkFirst(req, SHELL));
   } else if (url.hostname === 'raw.githubusercontent.com' && /\.vrm($|\?)/i.test(url.pathname)) {
     e.respondWith(cacheFirst(req, RUNTIME));
