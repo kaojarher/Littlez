@@ -544,23 +544,9 @@
           </label>
         </div>
         <div class="field">
-          <label>專屬模型覆蓋（可選）</label>
-          <select id="roleModelOverride">
-            <option value="">跟隨全域性模型設定</option>
-            <option value="openai/gpt-4o-mini">Puter · GPT-4o Mini</option>
-            <option value="openai/gpt-4o">Puter · GPT-4o</option>
-            <option value="anthropic/claude-3-5-sonnet">Puter · Claude 3.5 Sonnet</option>
-            <option value="deepseek/deepseek-chat">Puter · DeepSeek</option>
-            <option value="google/gemini-2.0-flash">Puter · Gemini 2.0 Flash</option>
-            <option value="llama3.2">Ollama · llama3.2</option>
-            <option value="qwen2.5">Ollama · qwen2.5</option>
-          </select>
-          <div class="hint">內建選項僅對 Puter / Ollama 生效；下方「自訂模型」對所有提供者生效（OpenAI 相容／自訂端點會直接使用該名稱）。</div>
-          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
-            <input type="text" id="customModelInput" placeholder="新增模型名稱，例：gemma3:27b" autocomplete="off" style="flex:1;min-width:0;">
-            <button class="btn sm" type="button" id="customModelAdd">＋新增</button>
-            <button class="btn sm" type="button" id="customModelDel">刪除所選</button>
-          </div>
+          <label>使用的模型與 API（設定檔）</label>
+          <select id="roleProfileSelect"></select>
+          <div class="hint">選項來自畫面上端「模型與 API 設定」所建立的設定檔；要新增模型或端點，請到那裡建立。</div>
         </div>
         <div class="field">
           <label>🧍 3D 模型（VRM）</label>
@@ -623,7 +609,21 @@
 
         <div class="status-bar" id="statusBar"></div>
 
-        <div class="section-title">1. LLM 提供者</div>
+        <div class="section-title">0. 連線設定檔（所有模型與 API 端點統一在此建立）</div>
+        <div class="field">
+          <label>設定檔</label>
+          <select id="profileSelect"></select>
+          <input type="text" id="profileName" placeholder="設定檔名稱，例：公司 LiteLLM · gemma3" autocomplete="off" style="margin-top:6px;">
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            <button class="btn sm" type="button" id="profileAdd">＋新增設定檔</button>
+            <button class="btn sm" type="button" id="profileDup">複製</button>
+            <button class="btn sm" type="button" id="profileDefault">設為預設</button>
+            <button class="btn sm" type="button" id="profileDel">刪除</button>
+          </div>
+          <div class="hint" id="profileHint"></div>
+        </div>
+
+        <div class="section-title">1. LLM 提供者（下方欄位編輯上方選取的設定檔）</div>
         <div class="field">
           <label>選擇提供者</label>
           <select id="providerSelect">
@@ -667,11 +667,6 @@
             <option value="google/gemini-2.0-flash">Gemini 2.0 Flash</option>
             <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B</option>
           </select>
-          <div id="customModelPickRow" style="display:none;gap:6px;margin-top:6px;align-items:center;">
-            <select id="customModelPick" style="flex:1;min-width:0;"></select>
-            <button class="btn sm" type="button" id="customModelPickAdd" title="把上方模型名稱加入自訂清單">＋加入清單</button>
-            <button class="btn sm" type="button" id="customModelPickDel" title="刪除所選自訂模型">刪除</button>
-          </div>
           <div class="hint" id="modelHint"></div>
         </div>
 
@@ -870,7 +865,6 @@
   const roleAvatar = $("#roleAvatar");
   const roleColor = $("#roleColor");
   const roleMemory = $("#roleMemory");
-  const roleModelOverride = $("#roleModelOverride");
   const closeRoleModal = $("#closeRoleModal");
   const cancelRoleBtn = $("#cancelRoleBtn");
   const saveRoleBtn = $("#saveRoleBtn");
@@ -1101,114 +1095,161 @@
   function scrollToBottom() {
     chatArea.scrollTop = chatArea.scrollHeight;
   }
+  // ===== 連線設定檔（統一在「模型與 API 設定」建立；角色只能挑選）=====
+  const PROFILE_FALLBACK_MODEL = { puter: "openai/gpt-4o-mini", openai: "gpt-4o-mini", ollama: "llama3.2", custom: "local-model" };
+  function settingsFromProfile(prof, base) {
+    const s = { ...base, provider: prof.provider };
+    if (prof.provider === "puter") s.puterModel = prof.model || PROFILE_FALLBACK_MODEL.puter;
+    else if (prof.provider === "openai") { s.openaiBase = prof.base; s.openaiKey = prof.key; s.openaiModel = prof.model; }
+    else if (prof.provider === "ollama") { s.ollamaBase = prof.base; s.ollamaModel = prof.model; }
+    else { s.customBase = prof.base; s.customKey = prof.key; s.customModel = prof.model; }
+    return s;
+  }
+  function profileFromSettings(s, name) {
+    const prov = s.provider || "puter";
+    const prof = { id: uid(), name: name, provider: prov, base: "", key: "", model: "" };
+    if (prov === "puter") prof.model = s.puterModel || PROFILE_FALLBACK_MODEL.puter;
+    else if (prov === "openai") { prof.base = s.openaiBase || ""; prof.key = s.openaiKey || ""; prof.model = s.openaiModel || ""; }
+    else if (prov === "ollama") { prof.base = s.ollamaBase || ""; prof.model = s.ollamaModel || ""; }
+    else { prof.base = s.customBase || ""; prof.key = s.customKey || ""; prof.model = s.customModel || ""; }
+    return prof;
+  }
+  function ensureProfiles() {
+    const st = state.settings;
+    let changed = false;
+    if (!Array.isArray(st.profiles) || !st.profiles.length) {
+      const p = profileFromSettings(st, "\u9810\u8A2D");
+      st.profiles = [p];
+      st.defaultProfileId = p.id;
+      changed = true;
+    }
+    if (!st.profiles.some((p) => p.id === st.defaultProfileId)) { st.defaultProfileId = st.profiles[0].id; changed = true; }
+    if ("customModels" in st) { delete st.customModels; changed = true; }
+    state.roles.forEach((r) => {
+      if (r.modelOverride) { r.modelOverride = ""; changed = true; }
+      if (typeof r.profileId !== "string") { r.profileId = ""; changed = true; }
+    });
+    if (changed) saveState();
+  }
+  function getProfileById(id) { return (state.settings.profiles || []).find((p) => p.id === id); }
+  function getRoleProfile(role) {
+    return (role && role.profileId && getProfileById(role.profileId)) || getProfileById(state.settings.defaultProfileId) || state.settings.profiles[0];
+  }
+  function getRoleSettings(role) { return settingsFromProfile(getRoleProfile(role), state.settings); }
   function getEffectiveModel(role) {
-    const s = state.settings;
-    const ov = role && role.modelOverride || "";
-    const custom = (s.customModels || []).includes(ov) ? ov : "";
-    if (s.provider === "puter") return ov || s.puterModel || "openai/gpt-4o-mini";
-    if (s.provider === "ollama") return ov || s.ollamaModel || "llama3.2";
-    if (s.provider === "openai") return custom || s.openaiModel || "gpt-4o-mini";
-    return custom || s.customModel || "local-model";
+    const prof = getRoleProfile(role);
+    return prof.model || PROFILE_FALLBACK_MODEL[prof.provider] || "";
+  }
+  function providerLabelOf(prov) {
+    return prov === "puter" ? "Puter AI" : prov === "openai" ? "OpenAI" : prov === "ollama" ? "Ollama" : "\u81EA\u5B9A\u7FA9 LLM";
   }
   function updateTopbar() {
     const role = getActiveRole();
     if (!role) return;
     currentRoleTitle.textContent = role.name || "\u672A\u547D\u540D\u89D2\u8272";
+    const prof = getRoleProfile(role);
     const eff = getEffectiveModel(role);
-    const ov = role.modelOverride || "";
-    providerBadge.textContent = getProviderLabel() + " \xB7 " + eff;
-    providerBadge.title = "\u9EDE\u9078\u958B\u555F\u6A21\u578B\u8207 API \u8A2D\u5B9A\n\u89D2\u8272\uFF1A" + (role.name || "") + "\n\u7576\u524D\u6A21\u578B\uFF1A" + eff + (ov && eff === ov ? "\uFF08\u89D2\u8272\u5C08\u5C6C\uFF09" : "\uFF08\u5168\u57DF\uFF09");
+    const explicit = !!(role.profileId && getProfileById(role.profileId));
+    providerBadge.textContent = prof.name + " \xB7 " + eff;
+    providerBadge.title = "\u9EDE\u9078\u958B\u555F\u6A21\u578B\u8207 API \u8A2D\u5B9A\n\u89D2\u8272\uFF1A" + (role.name || "") + "\n\u8A2D\u5B9A\u6A94\uFF1A" + prof.name + "\uFF08" + providerLabelOf(prof.provider) + "\uFF0C" + (explicit ? "\u89D2\u8272\u6307\u5B9A" : "\u9810\u8A2D") + "\uFF09\n\u6A21\u578B\uFF1A" + eff;
   }
-  function refreshCustomModelPick(provider) {
-    const row = document.getElementById("customModelPickRow");
-    const pick = document.getElementById("customModelPick");
-    const list = Array.isArray(state.settings.customModels) ? state.settings.customModels : [];
-    const prov = provider || providerSelect.value;
-    row.style.display = prov === "puter" ? "none" : "flex";
-    pick.innerHTML = "";
-    const h = document.createElement("option");
-    h.value = "";
-    h.textContent = list.length ? "\u2014 \u5F9E\u81EA\u8A02\u6E05\u55AE\u9078\u64C7\uFF08" + list.length + "\uFF09\u2014" : "\u2014 \u5C1A\u7121\u81EA\u8A02\u6A21\u578B \u2014";
-    pick.appendChild(h);
-    list.forEach((m) => {
+  function refreshRoleProfileOptions(selected) {
+    const sel = document.getElementById("roleProfileSelect");
+    sel.innerHTML = "";
+    const def = getProfileById(state.settings.defaultProfileId) || state.settings.profiles[0];
+    const o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = "\u8DDF\u96A8\u9810\u8A2D\u8A2D\u5B9A\u6A94\uFF08" + def.name + " \xB7 " + (def.model || "") + "\uFF09";
+    sel.appendChild(o0);
+    state.settings.profiles.forEach((p) => {
       const o = document.createElement("option");
-      o.value = m;
-      o.textContent = m;
-      pick.appendChild(o);
-    });
-  }
-  document.getElementById("customModelPick").addEventListener("change", (e) => {
-    if (e.target.value) modelInput.value = e.target.value;
-  });
-  document.getElementById("customModelPickAdd").addEventListener("click", () => {
-    const name = modelInput.value.trim();
-    if (!name) return;
-    if (/\s/.test(name)) { alert("\u6A21\u578B\u540D\u7A31\u4E0D\u53EF\u5305\u542B\u7A7A\u767D\u3002"); return; }
-    if (!Array.isArray(state.settings.customModels)) state.settings.customModels = [];
-    if (!state.settings.customModels.includes(name)) {
-      state.settings.customModels.push(name);
-      saveState();
-    }
-    refreshCustomModelPick();
-    document.getElementById("customModelPick").value = name;
-  });
-  document.getElementById("customModelPickDel").addEventListener("click", () => {
-    const cur = document.getElementById("customModelPick").value;
-    if (!cur) { alert("\u8ACB\u5148\u5F9E\u6E05\u55AE\u9078\u53D6\u8981\u522A\u9664\u7684\u81EA\u8A02\u6A21\u578B\u3002"); return; }
-    state.settings.customModels = (state.settings.customModels || []).filter((m) => m !== cur);
-    saveState();
-    refreshCustomModelPick();
-  });
-  function refreshModelOverrideOptions(selected) {
-    const sel = roleModelOverride;
-    sel.querySelectorAll("optgroup[data-custom], option[data-temp]").forEach((n) => n.remove());
-    const list = Array.isArray(state.settings.customModels) ? state.settings.customModels : [];
-    if (list.length) {
-      const g = document.createElement("optgroup");
-      g.label = "自訂模型";
-      g.setAttribute("data-custom", "1");
-      list.forEach((m) => {
-        const o = document.createElement("option");
-        o.value = m;
-        o.textContent = "自訂 · " + m;
-        g.appendChild(o);
-      });
-      sel.appendChild(g);
-    }
-    const want = selected == null ? sel.value : selected;
-    if (want && !Array.from(sel.options).some((o) => o.value === want)) {
-      const o = document.createElement("option");
-      o.value = want;
-      o.textContent = want + "（已不在清單）";
-      o.setAttribute("data-temp", "1");
+      o.value = p.id;
+      o.textContent = p.name + " \xB7 " + (p.model || "") + "\uFF08" + providerLabelOf(p.provider) + "\uFF09";
       sel.appendChild(o);
-    }
-    sel.value = want || "";
+    });
+    sel.value = selected && getProfileById(selected) ? selected : "";
   }
-  document.getElementById("customModelAdd").addEventListener("click", () => {
-    const inp = document.getElementById("customModelInput");
-    const name = inp.value.trim();
-    if (!name) return;
-    if (/\s/.test(name)) { alert("模型名稱不可包含空白。"); return; }
-    if (!Array.isArray(state.settings.customModels)) state.settings.customModels = [];
-    const exists = state.settings.customModels.includes(name);
-    if (!exists) {
-      state.settings.customModels.push(name);
-      saveState();
-    }
-    inp.value = "";
-    refreshModelOverrideOptions(name);
-    refreshCustomModelPick();
+  // --- 設定視窗中的設定檔管理（以草稿編輯，按「儲存」才生效）---
+  let draftProfiles = [];
+  let draftDefaultId = "";
+  let editingProfileId = "";
+  function collectProfileFromUI() {
+    const provider = providerSelect.value;
+    if (provider === "puter") return { provider, base: "", key: "", model: puterModelSelect.value };
+    return { provider, base: apiBaseUrl.value.trim(), key: provider === "ollama" ? "" : apiKey.value.trim(), model: modelInput.value.trim() };
+  }
+  function commitFormToDraft() {
+    const p = draftProfiles.find((x) => x.id === editingProfileId);
+    if (!p) return;
+    Object.assign(p, collectProfileFromUI());
+    p.name = document.getElementById("profileName").value.trim() || p.name;
+  }
+  function loadProfileToForm(p) {
+    providerSelect.value = p.provider;
+    updateProviderUI(p.provider, settingsFromProfile(p, state.settings));
+  }
+  function renderProfileSelect() {
+    const sel = document.getElementById("profileSelect");
+    sel.innerHTML = "";
+    draftProfiles.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.name + (p.id === draftDefaultId ? "\uFF08\u9810\u8A2D\uFF09" : "");
+      sel.appendChild(o);
+    });
+    sel.value = editingProfileId;
+    const cur = draftProfiles.find((p) => p.id === editingProfileId) || {};
+    document.getElementById("profileName").value = cur.name || "";
+    document.getElementById("profileDel").disabled = draftProfiles.length <= 1;
+    document.getElementById("profileDefault").disabled = editingProfileId === draftDefaultId;
+    document.getElementById("profileHint").textContent = "\u5171 " + draftProfiles.length + " \u500B\u8A2D\u5B9A\u6A94\u3002\u89D2\u8272\u53EF\u5728\u300C\u7DE8\u8F2F\u89D2\u8272\u300D\u4E2D\u6311\u9078\uFF1B\u672A\u6307\u5B9A\u7684\u89D2\u8272\u4F7F\u7528\u9810\u8A2D\u8A2D\u5B9A\u6A94\u3002\u6309\u300C\u5132\u5B58\u300D\u5F8C\u624D\u6703\u751F\u6548\u3002";
+  }
+  function switchEditingProfile(id) {
+    editingProfileId = id;
+    const p = draftProfiles.find((x) => x.id === id);
+    if (p) loadProfileToForm(p);
+    renderProfileSelect();
+  }
+  function beginProfileEditing(startId) {
+    draftProfiles = JSON.parse(JSON.stringify(state.settings.profiles));
+    draftDefaultId = state.settings.defaultProfileId;
+    switchEditingProfile(draftProfiles.some((p) => p.id === startId) ? startId : draftDefaultId);
+  }
+  document.getElementById("profileSelect").addEventListener("change", (e) => {
+    commitFormToDraft();
+    switchEditingProfile(e.target.value);
   });
-  document.getElementById("customModelDel").addEventListener("click", () => {
-    const cur = roleModelOverride.value;
-    const list = state.settings.customModels || [];
-    if (!cur || !list.includes(cur)) { alert("請先在選單中選取一個「自訂模型」再刪除（內建選項無法刪除）。"); return; }
-    state.settings.customModels = list.filter((m) => m !== cur);
-    saveState();
-    refreshModelOverrideOptions("");
-    refreshCustomModelPick();
-    updateTopbar();
+  document.getElementById("profileName").addEventListener("change", () => {
+    commitFormToDraft();
+    renderProfileSelect();
+  });
+  document.getElementById("profileAdd").addEventListener("click", () => {
+    commitFormToDraft();
+    const np = { id: uid(), name: "\u65B0\u8A2D\u5B9A\u6A94 " + (draftProfiles.length + 1), provider: "custom", base: "http://127.0.0.1:8080/v1", key: "", model: "local-model" };
+    draftProfiles.push(np);
+    switchEditingProfile(np.id);
+    document.getElementById("profileName").focus();
+  });
+  document.getElementById("profileDup").addEventListener("click", () => {
+    commitFormToDraft();
+    const cur = draftProfiles.find((p) => p.id === editingProfileId);
+    if (!cur) return;
+    const cp = { ...cur, id: uid(), name: cur.name + " \u8907\u672C" };
+    draftProfiles.push(cp);
+    switchEditingProfile(cp.id);
+  });
+  document.getElementById("profileDefault").addEventListener("click", () => {
+    commitFormToDraft();
+    draftDefaultId = editingProfileId;
+    renderProfileSelect();
+  });
+  document.getElementById("profileDel").addEventListener("click", () => {
+    if (draftProfiles.length <= 1) return;
+    const cur = draftProfiles.find((p) => p.id === editingProfileId);
+    if (!confirm("\u78BA\u5B9A\u8981\u522A\u9664\u8A2D\u5B9A\u6A94\u300C" + (cur ? cur.name : "") + "\u300D\u55CE\uFF1F\u4F7F\u7528\u5B83\u7684\u89D2\u8272\u6703\u6539\u7528\u9810\u8A2D\u8A2D\u5B9A\u6A94\u3002")) return;
+    draftProfiles = draftProfiles.filter((p) => p.id !== editingProfileId);
+    if (!draftProfiles.some((p) => p.id === draftDefaultId)) draftDefaultId = draftProfiles[0].id;
+    switchEditingProfile(draftDefaultId);
   });
   function openRoleModal(roleId) {
     state.editingRoleId = roleId || null;
@@ -1221,7 +1262,7 @@
       roleAvatar.value = role.avatar || "\u{1F916}";
       roleColor.value = role.color || "#4f6ef7";
       roleMemory.checked = role.memory !== false;
-      refreshModelOverrideOptions(role.modelOverride || "");
+      refreshRoleProfileOptions(role.profileId || "");
       fillVoiceUI(role.voice);
       pendingVrm = null;
       vrmClear = false;
@@ -1235,7 +1276,7 @@
       roleAvatar.value = "\u2728";
       roleColor.value = "#4f6ef7";
       roleMemory.checked = true;
-      refreshModelOverrideOptions("");
+      refreshRoleProfileOptions("");
       fillVoiceUI(null);
       pendingVrm = null;
       vrmClear = false;
@@ -1266,7 +1307,8 @@
       avatar: roleAvatar.value.trim() || "\u{1F916}",
       color: roleColor.value,
       memory: roleMemory.checked,
-      modelOverride: roleModelOverride.value,
+      modelOverride: "",
+      profileId: document.getElementById("roleProfileSelect").value,
       voice: readVoiceUI(),
       vrmUrl: document.getElementById("roleVrmUrl").value.trim()
     };
@@ -1315,7 +1357,6 @@
   }
   function updateProviderUI(provider, s) {
     s = s || state.settings;
-    refreshCustomModelPick(provider);
     statusBar.className = "status-bar";
     if (provider === "puter") {
       statusBar.classList.add("ok");
@@ -1450,7 +1491,6 @@
   function openProviderModal() {
     var _a, _b, _c, _d, _e;
     const s = state.settings;
-    providerSelect.value = s.provider;
     temperature.value = (_a = s.temperature) != null ? _a : 0.7;
     tempVal.textContent = ((_b = s.temperature) != null ? _b : 0.7).toFixed(1);
     topP.value = (_c = s.topP) != null ? _c : 1;
@@ -1460,10 +1500,10 @@
     streamEnabled.checked = s.stream !== false;
     testStatus.classList.remove("show");
     testStatus.textContent = "";
-    updateProviderUI(s.provider, s);
+    beginProfileEditing(getRoleProfile(getActiveRole()).id);
     {
       const role = getActiveRole();
-      if (role) statusBar.innerHTML += "<br>\u89D2\u8272\u300C" + escapeHtml(role.name || "") + "\u300D\u5BE6\u969B\u4F7F\u7528\uFF1A<strong>" + escapeHtml(getEffectiveModel(role)) + "</strong>" + (role.modelOverride ? "\uFF08\u5DF2\u8A2D\u5B9A\u5C08\u5C6C\u6A21\u578B\uFF09" : "");
+      if (role) statusBar.innerHTML += "<br>\u89D2\u8272\u300C" + escapeHtml(role.name || "") + "\u300D\u7576\u524D\u4F7F\u7528\uFF1A<strong>" + escapeHtml(getRoleProfile(role).name + " \xB7 " + getEffectiveModel(role)) + "</strong>";
     }
     providerModal.classList.add("show");
   }
@@ -1471,7 +1511,12 @@
     providerModal.classList.remove("show");
   }
   function saveProviderSettings() {
-    state.settings = collectSettingsFromUI();
+    commitFormToDraft();
+    const ns = collectSettingsFromUI();
+    ns.profiles = draftProfiles;
+    ns.defaultProfileId = draftDefaultId;
+    const defProf = draftProfiles.find((p) => p.id === draftDefaultId) || draftProfiles[0];
+    state.settings = settingsFromProfile(defProf, ns);
     saveState();
     updateTopbar();
     closeProviderModalFn();
@@ -1485,26 +1530,25 @@
     }
   }
   function resolveEndpoint(settings, roleOverride) {
-    const customOv = roleOverride && (settings.customModels || []).includes(roleOverride) ? roleOverride : "";
     if (settings.provider === "openai") {
       return {
         baseUrl: (settings.openaiBase || "").replace(/\/+$/, ""),
         apiKey: settings.openaiKey,
-        model: customOv || settings.openaiModel
+        model: settings.openaiModel
       };
     }
     if (settings.provider === "ollama") {
       return {
         baseUrl: (settings.ollamaBase || "").replace(/\/+$/, ""),
         apiKey: "",
-        model: roleOverride || settings.ollamaModel
+        model: settings.ollamaModel
       };
     }
     if (settings.provider === "custom") {
       return {
         baseUrl: (settings.customBase || "").replace(/\/+$/, ""),
         apiKey: settings.customKey,
-        model: customOv || settings.customModel
+        model: settings.customModel
       };
     }
     return null;
@@ -1831,13 +1875,12 @@
     try {
       const outfitNote = handleOutfitIntent(text);
       const messages = buildMessages(role, text, outfitNote);
-      const settings = state.settings;
+      const settings = getRoleSettings(role);
       const useStream = settings.stream !== false;
-      const modelOverride = role.modelOverride || "";
       if (settings.provider === "puter") {
-        await callPuter(messages, modelOverride, useStream, assistantMsg, assistantEl);
+        await callPuter(messages, settings.puterModel, useStream, assistantMsg, assistantEl);
       } else {
-        const ep = resolveEndpoint(settings, modelOverride);
+        const ep = resolveEndpoint(settings, "");
         await callOpenAICompatible(ep, messages, useStream, assistantMsg, assistantEl);
       }
     } catch (err) {
@@ -2068,6 +2111,7 @@
   }
   function init() {
     loadState();
+    ensureProfiles();
     if (!state.activeRoleId && state.roles.length > 0) state.activeRoleId = state.roles[0].id;
     applyFontScale(state.settings.fontSize || 1.2);
     renderRoles();
