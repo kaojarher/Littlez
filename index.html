@@ -554,9 +554,13 @@
             <option value="google/gemini-2.0-flash">Puter · Gemini 2.0 Flash</option>
             <option value="llama3.2">Ollama · llama3.2</option>
             <option value="qwen2.5">Ollama · qwen2.5</option>
-            <option value="gemma3:27b">Ollama · gemma3:27b</option>
           </select>
-          <div class="hint">僅對 Puter / Ollama 生效；OpenAI 相容端點請使用全域性模型。</div>
+          <div class="hint">內建選項僅對 Puter / Ollama 生效；下方「自訂模型」對所有提供者生效（OpenAI 相容／自訂端點會直接使用該名稱）。</div>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
+            <input type="text" id="customModelInput" placeholder="新增模型名稱，例：gemma3:27b" autocomplete="off" style="flex:1;min-width:0;">
+            <button class="btn sm" type="button" id="customModelAdd">＋新增</button>
+            <button class="btn sm" type="button" id="customModelDel">刪除所選</button>
+          </div>
         </div>
         <div class="field">
           <label>🧍 3D 模型（VRM）</label>
@@ -1100,6 +1104,54 @@
     const s = state.settings;
     providerBadge.title = "\u9EDE\u9078\u958B\u555F\u6A21\u578B\u8207 API \u8A2D\u5B9A\n\u7576\u524D\u6A21\u578B\uFF1A" + (s.provider === "puter" ? s.puterModel : s.provider === "openai" ? s.openaiModel : s.provider === "ollama" ? s.ollamaModel : s.customModel);
   }
+  function refreshModelOverrideOptions(selected) {
+    const sel = roleModelOverride;
+    sel.querySelectorAll("optgroup[data-custom], option[data-temp]").forEach((n) => n.remove());
+    const list = Array.isArray(state.settings.customModels) ? state.settings.customModels : [];
+    if (list.length) {
+      const g = document.createElement("optgroup");
+      g.label = "自訂模型";
+      g.setAttribute("data-custom", "1");
+      list.forEach((m) => {
+        const o = document.createElement("option");
+        o.value = m;
+        o.textContent = "自訂 · " + m;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    }
+    const want = selected == null ? sel.value : selected;
+    if (want && !Array.from(sel.options).some((o) => o.value === want)) {
+      const o = document.createElement("option");
+      o.value = want;
+      o.textContent = want + "（已不在清單）";
+      o.setAttribute("data-temp", "1");
+      sel.appendChild(o);
+    }
+    sel.value = want || "";
+  }
+  document.getElementById("customModelAdd").addEventListener("click", () => {
+    const inp = document.getElementById("customModelInput");
+    const name = inp.value.trim();
+    if (!name) return;
+    if (/\s/.test(name)) { alert("模型名稱不可包含空白。"); return; }
+    if (!Array.isArray(state.settings.customModels)) state.settings.customModels = [];
+    const exists = state.settings.customModels.includes(name);
+    if (!exists) {
+      state.settings.customModels.push(name);
+      saveState();
+    }
+    inp.value = "";
+    refreshModelOverrideOptions(name);
+  });
+  document.getElementById("customModelDel").addEventListener("click", () => {
+    const cur = roleModelOverride.value;
+    const list = state.settings.customModels || [];
+    if (!cur || !list.includes(cur)) { alert("請先在選單中選取一個「自訂模型」再刪除（內建選項無法刪除）。"); return; }
+    state.settings.customModels = list.filter((m) => m !== cur);
+    saveState();
+    refreshModelOverrideOptions("");
+  });
   function openRoleModal(roleId) {
     state.editingRoleId = roleId || null;
     if (roleId) {
@@ -1111,7 +1163,7 @@
       roleAvatar.value = role.avatar || "\u{1F916}";
       roleColor.value = role.color || "#4f6ef7";
       roleMemory.checked = role.memory !== false;
-      roleModelOverride.value = role.modelOverride || "";
+      refreshModelOverrideOptions(role.modelOverride || "");
       fillVoiceUI(role.voice);
       pendingVrm = null;
       vrmClear = false;
@@ -1125,7 +1177,7 @@
       roleAvatar.value = "\u2728";
       roleColor.value = "#4f6ef7";
       roleMemory.checked = true;
-      roleModelOverride.value = "";
+      refreshModelOverrideOptions("");
       fillVoiceUI(null);
       pendingVrm = null;
       vrmClear = false;
@@ -1370,11 +1422,12 @@
     }
   }
   function resolveEndpoint(settings, roleOverride) {
+    const customOv = roleOverride && (settings.customModels || []).includes(roleOverride) ? roleOverride : "";
     if (settings.provider === "openai") {
       return {
         baseUrl: (settings.openaiBase || "").replace(/\/+$/, ""),
         apiKey: settings.openaiKey,
-        model: settings.openaiModel
+        model: customOv || settings.openaiModel
       };
     }
     if (settings.provider === "ollama") {
@@ -1388,7 +1441,7 @@
       return {
         baseUrl: (settings.customBase || "").replace(/\/+$/, ""),
         apiKey: settings.customKey,
-        model: settings.customModel
+        model: customOv || settings.customModel
       };
     }
     return null;
