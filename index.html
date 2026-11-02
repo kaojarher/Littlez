@@ -554,6 +554,7 @@
             <option value="google/gemini-2.0-flash">Puter · Gemini 2.0 Flash</option>
             <option value="llama3.2">Ollama · llama3.2</option>
             <option value="qwen2.5">Ollama · qwen2.5</option>
+            <option value="gemma3:27b">Ollama · gemma3:27b</option>
           </select>
           <div class="hint">僅對 Puter / Ollama 生效；OpenAI 相容端點請使用全域性模型。</div>
         </div>
@@ -1373,7 +1374,7 @@
       return {
         baseUrl: (settings.openaiBase || "").replace(/\/+$/, ""),
         apiKey: settings.openaiKey,
-        model: roleOverride || settings.openaiModel
+        model: settings.openaiModel
       };
     }
     if (settings.provider === "ollama") {
@@ -1387,7 +1388,7 @@
       return {
         baseUrl: (settings.customBase || "").replace(/\/+$/, ""),
         apiKey: settings.customKey,
-        model: roleOverride || settings.customModel
+        model: settings.customModel
       };
     }
     return null;
