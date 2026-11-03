@@ -667,6 +667,7 @@
           </label>
           <input type="text" id="apiBaseUrl" placeholder="https://api.openai.com/v1" autocomplete="off">
           <div class="hint" id="baseUrlHint"></div>
+          <div class="hint" id="mixedHint" style="display:none;color:var(--danger);font-weight:600;"></div>
         </div>
 
         <div class="field">
@@ -1388,6 +1389,7 @@
   function loadProfileToForm(p) {
     providerSelect.value = p.provider;
     updateProviderUI(p.provider, settingsFromProfile(p, state.settings));
+    updateMixedHint();
   }
   function renderProfileSelect() {
     const sel = document.getElementById("profileSelect");
@@ -1561,6 +1563,22 @@
     updateTopbar();
     closeRoleModalFn();
   }
+  // https 頁面無法呼叫 http 端點（localhost 除外）：即時提醒
+  function isBlockedMixedContent(url, provider) {
+    if (provider === "puter") return false;
+    let u;
+    try { u = new URL(String(url || "").trim()); } catch (_) { return false; }
+    if (location.protocol !== "https:" || u.protocol !== "http:") return false;
+    return !/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i.test(u.hostname);
+  }
+  function updateMixedHint() {
+    const el = document.getElementById("mixedHint");
+    const bad = isBlockedMixedContent(apiBaseUrl.value, providerSelect.value);
+    el.style.display = bad ? "block" : "none";
+    el.textContent = bad ? "\u26A0\uFE0F \u76EE\u524D\u9801\u9762\u662F https\uFF0C\u700F\u89BD\u5668\u6703\u76F4\u63A5\u5C01\u9396\u5C0D http \u4F4D\u5740\u7684\u8ACB\u6C42\uFF0C\u9019\u500B\u4F4D\u5740\u7121\u6CD5\u9023\u7DDA\u3002\u8ACB\u6539\u7528 https \u4F4D\u5740\uFF0C\u6216\u6539\u7528 http:// \u6216\u672C\u6A5F\u6A94\u6848\u958B\u555F\u6B64\u9801\u9762\u3002" : "";
+  }
+  apiBaseUrl.addEventListener("input", updateMixedHint);
+  providerSelect.addEventListener("change", updateMixedHint);
   function updateProviderUI(provider, s) {
     s = s || state.settings;
     statusBar.className = "status-bar";
@@ -1759,6 +1777,21 @@
     }
     return null;
   }
+  // 瀏覽器對「連不上」只會丟出籠統的 Failed to fetch，這裡補上常見原因的說明
+  function explainFetchError(e, baseUrl) {
+    const msg = e && e.message ? String(e.message) : String(e);
+    const isNet = e instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(msg);
+    if (!isNet || !baseUrl) return msg;
+    let u = null;
+    try { u = new URL(baseUrl); } catch (_) {}
+    const lines = ["\u7121\u6CD5\u9023\u7DDA\u5230 " + baseUrl + "\uFF08" + msg + "\uFF09"];
+    if (u && location.protocol === "https:" && u.protocol === "http:") {
+      lines.push("\u2022 \u76EE\u524D\u9801\u9762\u662F https\uFF0C\u700F\u89BD\u5668\u6703\u5C01\u9396\u5C0D http \u4F4D\u5740\u7684\u8ACB\u6C42\uFF08\u6DF7\u5408\u5167\u5BB9\uFF09\u3002\u8ACB\u6539\u7528 https \u4F4D\u5740\uFF0C\u6216\u6539\u7528 http:// \u6216\u672C\u6A5F\u6A94\u6848\u958B\u555F\u6B64\u9801\u9762\u3002");
+    }
+    lines.push("\u2022 \u4E5F\u53EF\u80FD\u662F\uFF1A\u4F3A\u670D\u5668\u672A\u5141\u8A31\u8DE8\u4F86\u6E90\uFF08CORS\uFF09\u3001\u516C\u53F8\u4EE3\u7406\u4F3A\u670D\u5668\u5C01\u9396\u4E86\u8A72 IP \u6216\u9023\u63A5\u57E0" + (u ? "\uFF08" + u.host + "\uFF09" : "") + "\u3001\u4F3A\u670D\u5668\u672A\u555F\u52D5\u6216\u9632\u706B\u7246\u672A\u958B\u653E\u3002");
+    lines.push("\u2022 \u53EF\u5148\u5728\u700F\u89BD\u5668\u65B0\u5206\u9801\u958B\u555F " + baseUrl + "/models \u6E2C\u8A66\uFF0C\u4E26\u6309 F12 \u67E5\u770B\u4E3B\u63A7\u53F0\u7684\u8A73\u7D30\u932F\u8AA4\u3002");
+    return lines.join("\n");
+  }
   async function testConnection() {
     var _a, _b, _c, _d, _e, _f, _g;
     testBtn.disabled = true;
@@ -1810,7 +1843,9 @@
       testStatus.textContent = "\u2705 \u9023\u7DDA\u6210\u529F\uFF01\u6A21\u578B\u56DE\u8986\uFF1A" + String(reply).slice(0, 120);
     } catch (e) {
       testStatus.style.color = "var(--danger)";
-      testStatus.textContent = "\u274C \u9023\u7DDA\u5931\u6557\uFF1A" + (e && e.message ? e.message : typeof puterErrText === "function" ? puterErrText(e) : String(e));
+      const epDiag = uiSettings.provider === "puter" ? null : resolveEndpoint(uiSettings, "");
+      testStatus.style.whiteSpace = "pre-wrap";
+      testStatus.textContent = "\u274C \u9023\u7DDA\u5931\u6557\uFF1A" + (e && e.message ? explainFetchError(e, epDiag && epDiag.baseUrl) : typeof puterErrText === "function" ? puterErrText(e) : String(e));
     } finally {
       testBtn.disabled = false;
       testBtn.textContent = "\u{1F50C} \u6E2C\u8A66\u9023\u7DDA";
@@ -2090,7 +2125,12 @@
         await callOpenAICompatible(ep, messages, useStream, assistantMsg, assistantEl);
       }
     } catch (err) {
-      assistantMsg.content = "\u26A0\uFE0F \u51FA\u932F\u4E86\uFF1A" + (err && err.message ? err.message : typeof puterErrText === "function" ? puterErrText(err) : "\u672A\u77E5\u932F\u8AA4");
+      let sendBase = "";
+      try {
+        const rs = getRoleSettings(role);
+        if (rs.provider !== "puter") sendBase = resolveEndpoint(rs, "").baseUrl;
+      } catch (_) {}
+      assistantMsg.content = "\u26A0\uFE0F \u51FA\u932F\u4E86\uFF1A" + (err && err.message ? explainFetchError(err, sendBase) : typeof puterErrText === "function" ? puterErrText(err) : "\u672A\u77E5\u932F\u8AA4");
       if (assistantEl) {
         assistantEl.textContent = assistantMsg.content;
         assistantEl.classList.remove("streaming");
